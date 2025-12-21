@@ -178,6 +178,10 @@ cython_debug/
 
 # Data
 data/datasets/
+data/Model1/
+data/Model2/
+data/Model3/
+data/Model4/
 logs/
 training_stats/
 saved_models/
@@ -188,3 +192,4 @@ slurm-*.out
 
 # Extra
 _personal_tests.ipynb
+.DS_Store

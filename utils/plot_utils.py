@@ -2,6 +2,7 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
+from data.boundary_1d2d_condition import Boundary1d2dCondition
 import numpy as np
 import geopandas as gpd
 import pandas as pd
@@ -36,11 +37,11 @@ def get_trimmed_cmap(cmap_name, start=0.0, end=1.0, n_colors=256):
     
     return new_cmap
 
-def get_node_df(config: dict, run_id: str, mode: Literal['train', 'test'], no_ghost: bool = True) -> gpd.GeoDataFrame:
+def get_node_df(config: dict, run_id: str, mode: Literal['train', 'test'], no_ghost: bool = True, perimeter_name: str = "US Beaver") -> gpd.GeoDataFrame:
     '''Get the node GeoDataFrame, optionally removing ghost nodes based on boundary conditions.'''
     dataset_parameters = config['dataset_parameters']
     root_dir = dataset_parameters['root_dir']
-    nodes_shp_file = dataset_parameters['nodes_shp_file']
+    nodes_shp_file = dataset_parameters['nodes_2d_shp_file']
     nodes_shp_path = os.path.join(root_dir, 'raw', nodes_shp_file)
     node_df = gpd.read_file(nodes_shp_path)
 
@@ -55,20 +56,21 @@ def get_node_df(config: dict, run_id: str, mode: Literal['train', 'test'], no_gh
         inflow_boundary_nodes = dataset_parameters['inflow_boundary_nodes']
         outflow_boundary_nodes = dataset_parameters['outflow_boundary_nodes']
 
-        bc = BoundaryCondition(root_dir=root_dir,
+        bc = Boundary1d2dCondition(root_dir=root_dir,
                                hec_ras_file=hec_ras_file,
                                inflow_boundary_nodes=inflow_boundary_nodes,
                                outflow_boundary_nodes=outflow_boundary_nodes,
-                               saved_npz_file=FloodEventDataset.BOUNDARY_CONDITION_NPZ_FILE)
-        node_df = node_df[~node_df['CC_index'].isin(bc.ghost_nodes)]
+                               saved_npz_file=FloodEventDataset.BOUNDARY_CONDITION_NPZ_FILE,
+                               perimeter_name=perimeter_name)
+        node_df = node_df[~node_df['FID'].isin(bc.ghost_nodes)]
 
     return node_df
 
-def get_edge_df(config: dict, run_id: str, mode: Literal['train', 'test'], no_ghost: bool = True) -> gpd.GeoDataFrame:
+def get_edge_df(config: dict, run_id: str, mode: Literal['train', 'test'], no_ghost: bool = True, perimeter_name: str = "US Beaver") -> gpd.GeoDataFrame:
     '''Get the edge GeoDataFrame, optionally removing ghost edges based on boundary conditions.'''
     dataset_parameters = config['dataset_parameters']
     root_dir = dataset_parameters['root_dir']
-    edges_shp_file = dataset_parameters['edges_shp_file']
+    edges_shp_file = dataset_parameters['edges_2d_shp_file']
     edges_shp_path = os.path.join(root_dir, 'raw', edges_shp_file)
     link_df = gpd.read_file(edges_shp_path)
 
@@ -80,21 +82,51 @@ def get_edge_df(config: dict, run_id: str, mode: Literal['train', 'test'], no_gh
         summary_df = summary_df[summary_df['Run_ID'] == run_id]
         hec_ras_file = summary_df['HECRAS_Filepath'].values[0]
 
-        inflow_boundary_nodes = dataset_parameters['inflow_boundary_nodes']
-        outflow_boundary_nodes = dataset_parameters['outflow_boundary_nodes']
+        inflow_boundary_nodes = dataset_parameters.get('inflow_boundary_nodes', [])
+        outflow_boundary_nodes = dataset_parameters.get('outflow_boundary_nodes', [])
 
-        bc = BoundaryCondition(root_dir=root_dir,
-                               hec_ras_file=hec_ras_file,
-                               inflow_boundary_nodes=inflow_boundary_nodes,
-                               outflow_boundary_nodes=outflow_boundary_nodes,
-                               saved_npz_file=FloodEventDataset.BOUNDARY_CONDITION_NPZ_FILE)
+        bc = Boundary1d2dCondition(
+            root_dir=root_dir,
+            hec_ras_file=hec_ras_file,
+            inflow_boundary_nodes=inflow_boundary_nodes,
+            outflow_boundary_nodes=outflow_boundary_nodes,
+            saved_npz_file=FloodEventDataset.BOUNDARY_CONDITION_NPZ_FILE,
+            perimeter_name=perimeter_name
+        )
+        
+        # Filter ghost edges
         is_ghost_edge = link_df['from_node'].isin(bc.ghost_nodes) | link_df['to_node'].isin(bc.ghost_nodes)
-        boundary_nodes = np.concat([np.array(inflow_boundary_nodes), np.array(outflow_boundary_nodes)])
-        is_boundary_edge = link_df['from_node'].isin(boundary_nodes) | link_df['to_node'].isin(boundary_nodes)
-        link_df = pd.concat([link_df[~is_ghost_edge], link_df[is_ghost_edge & is_boundary_edge]], ignore_index=True)
+        
+        # Build boundary nodes array (handle empty lists)
+        boundary_nodes_list = []
+        if inflow_boundary_nodes:
+            boundary_nodes_list.append(np.array(inflow_boundary_nodes))
+        if outflow_boundary_nodes:
+            boundary_nodes_list.append(np.array(outflow_boundary_nodes))
+        
+        if boundary_nodes_list:
+            boundary_nodes = np.concatenate(boundary_nodes_list)
+            is_boundary_edge = link_df['from_node'].isin(boundary_nodes) | link_df['to_node'].isin(boundary_nodes)
+            # Keep non-ghost edges and boundary edges (even if ghost)
+            link_df = pd.concat([link_df[~is_ghost_edge], link_df[is_ghost_edge & is_boundary_edge]], ignore_index=True)
+        else:
+            # No boundary nodes - just remove all ghost edges
+            link_df = link_df[~is_ghost_edge].reset_index(drop=True)
 
-        assert np.all(link_df['from_node'][bc.inflow_edges_mask].isin(inflow_boundary_nodes) | link_df['to_node'][bc.inflow_edges_mask].isin(inflow_boundary_nodes)), "Inflow of link DataFrame does not match the inflow edges mask"
-        assert np.all(link_df['from_node'][bc.outflow_edges_mask].isin(outflow_boundary_nodes) | link_df['to_node'][bc.outflow_edges_mask].isin(outflow_boundary_nodes)), "Outflow of link DataFrame does not match the outflow edges mask"
+        # Validate boundary edges (only if they exist)
+        if inflow_boundary_nodes and bc.inflow_edges_mask is not None and np.any(bc.inflow_edges_mask):
+            inflow_check = (
+                link_df['from_node'][bc.inflow_edges_mask].isin(inflow_boundary_nodes) | 
+                link_df['to_node'][bc.inflow_edges_mask].isin(inflow_boundary_nodes)
+            )
+            assert np.all(inflow_check), "Inflow of link DataFrame does not match the inflow edges mask"
+        
+        if outflow_boundary_nodes and bc.outflow_edges_mask is not None and np.any(bc.outflow_edges_mask):
+            outflow_check = (
+                link_df['from_node'][bc.outflow_edges_mask].isin(outflow_boundary_nodes) | 
+                link_df['to_node'][bc.outflow_edges_mask].isin(outflow_boundary_nodes)
+            )
+            assert np.all(outflow_check), "Outflow of link DataFrame does not match the outflow edges mask"
 
     return link_df
 
@@ -199,7 +231,7 @@ def plot_individual_training_loss_ratio(path: str, start_epoch: int = 0, model_l
         plt.plot(train_loss_ratio, label=label)
 
     plt.plot(np.ones_like(train_loss_ratio), linestyle='--', color='red', label='Target Ratio (1.0)')
-    plt.title(f'{model_label if model_label is not None else ''} Training Loss Ratio Over Epochs')
+    plt.title(f'{model_label if model_label is not None else ""} Training Loss Ratio Over Epochs')
     plt.xticks(np.arange(len(train_loss_ratio), step=5))
     plt.ylabel('Ratio')
     plt.xlabel('Epoch')

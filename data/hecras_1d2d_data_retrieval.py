@@ -1,7 +1,52 @@
 import numpy as np
+import h5py
 
 from datetime import datetime
 from utils.file_utils import read_hdf_file_as_numpy
+
+def explore_hdf5_structure(filepath: str, base_path: str = '', max_depth: int = 10, current_depth: int = 0):
+    """
+    Recursively explore and print HDF5 file structure.
+    
+    Args:
+        filepath: Path to HDF5 file
+        base_path: Starting path in HDF5 hierarchy
+        max_depth: Maximum recursion depth
+        current_depth: Current recursion depth (internal use)
+    """
+    
+    with h5py.File(filepath, 'r') as f:
+        if base_path:
+            # Navigate to base path
+            parts = base_path.split('.')
+            obj = f
+            for part in parts:
+                if part in obj:
+                    obj = obj[part]
+                else:
+                    print(f"Path not found: {base_path}")
+                    return
+        else:
+            obj = f
+        
+        def print_structure(name, obj, depth=0):
+            indent = "  " * depth
+            if isinstance(obj, h5py.Group):
+                print(f"{indent}📁 {name}/ (Group)")
+                if depth < max_depth:
+                    for key in obj.keys():
+                        print_structure(key, obj[key], depth + 1)
+            elif isinstance(obj, h5py.Dataset):
+                print(f"{indent}📄 {name} (Dataset) - Shape: {obj.shape}, Dtype: {obj.dtype}")
+        
+        print(f"\nStructure at: {base_path if base_path else 'ROOT'}")
+        print("=" * 80)
+        
+        if isinstance(obj, h5py.Group):
+            for key in obj.keys():
+                print_structure(key, obj[key], current_depth)
+        else:
+            print(f"Dataset - Shape: {obj.shape}, Dtype: {obj.dtype}")
 
 def get_event_timesteps(filepath: str) -> np.ndarray:
     property_path = 'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.Time Date Stamp'
@@ -17,22 +62,22 @@ def get_event_timesteps(filepath: str) -> np.ndarray:
     time_series = vec_format(data)
     return time_series
 
-def get_cell_area(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
+def get_cell_area(filepath: str, perimeter_name: str = 'US Beaver', dtype: np.dtype = np.float32) -> np.ndarray:
     property_path = f'Geometry.2D Flow Areas.{perimeter_name}.Cells Surface Area'
     data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
     return data.astype(dtype)
 
-def get_min_cell_elevation(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
+def get_min_cell_elevation(filepath: str, perimeter_name: str = 'US Beaver', dtype: np.dtype = np.float32) -> np.ndarray:
     property_path = f'Geometry.2D Flow Areas.{perimeter_name}.Cells Minimum Elevation'
     data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
     return data.astype(dtype)
 
-def get_roughness(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
+def get_roughness(filepath: str, perimeter_name: str = 'US Beaver', dtype: np.dtype = np.float32) -> np.ndarray:
     property_path = f"Geometry.2D Flow Areas.{perimeter_name}.Cells Center Manning's n"
     data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
     return data.astype(dtype)
 
-def get_cumulative_rainfall(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
+def get_cumulative_rainfall(filepath: str, perimeter_name: str = 'US Beaver', dtype: np.dtype = np.float32) -> np.ndarray:
     try:
         property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Cell Cumulative Precipitation Depth'
         data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
@@ -46,62 +91,27 @@ def get_cumulative_rainfall(filepath: str, perimeter_name: str = 'Perimeter 1', 
 
     return data
 
-def get_water_level(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
+def get_water_level(filepath: str, perimeter_name: str = 'US Beaver', dtype: np.dtype = np.float32) -> np.ndarray:
     property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Water Surface'
     data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
     return data.astype(dtype)
 
-def get_water_volume(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
+def get_water_volume(filepath: str, perimeter_name: str = 'US Beaver', dtype: np.dtype = np.float32) -> np.ndarray:
     property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Cell Volume'
     data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
     return data.astype(dtype)
 
-def get_edge_direction_x(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
-    property_path = f'Geometry.2D Flow Areas.{perimeter_name}.Faces NormalUnitVector and Length'
-    data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
-    data = data.astype(dtype)
-
-    # Get x direction property
-    data = np.squeeze(np.take(data, indices=[0], axis=1))
-
-    return data
-
-def get_edge_direction_y(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
-    property_path = f'Geometry.2D Flow Areas.{perimeter_name}.Faces NormalUnitVector and Length'
-    data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
-    data = data.astype(dtype)
-
-    # Get y direction property
-    data = np.squeeze(np.take(data, indices=[1], axis=1))
-
-    return data
-
-def get_face_length(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
-    property_path = f'Geometry.2D Flow Areas.{perimeter_name}.Faces NormalUnitVector and Length'
-    data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
-    data = data.astype(dtype)
-
-    # Get face length property
-    data = np.squeeze(np.take(data, indices=[2], axis=1))
-
-    return data
-
-def get_velocity(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
+def get_velocity(filepath: str, perimeter_name: str = 'US Beaver', dtype: np.dtype = np.float32) -> np.ndarray:
     property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Face Velocity'
     data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
     return data.astype(dtype)
 
-def get_face_flow(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
+def get_face_flow(filepath: str, perimeter_name: str = 'US Beaver', dtype: np.dtype = np.float32) -> np.ndarray:
     property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Face Flow'
     data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
     return data.astype(dtype)
 
-def get_inflow(filepath: str, perimeter_name: str = 'Perimeter 1', dtype: np.dtype = np.float32) -> np.ndarray:
-    property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Boundary Conditions.UP_BC - Flow per Face'
-    data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
-    return data.astype(dtype)
-
-def get_wl_vol_interp_points_for_cell(cell_idx: int, filepath: str, perimeter_name: str = 'Perimeter 1') -> np.ndarray:
+def get_wl_vol_interp_points_for_cell(cell_idx: int, filepath: str, perimeter_name: str = 'US Beaver') -> np.ndarray:
     info_property_path = f'Geometry.2D Flow Areas.{perimeter_name}.Cells Volume Elevation Info'
     info_data = read_hdf_file_as_numpy(filepath=filepath, property_path=info_property_path)
 

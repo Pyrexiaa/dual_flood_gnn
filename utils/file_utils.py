@@ -22,10 +22,22 @@ def save_to_yaml_file(filepath: str, data: dict):
 
 def read_shp_file_as_numpy(filepath: str, columns: str | list) -> np.ndarray:
     file = gpd.read_file(filepath)
+    # See all columns
+    print("Available columns:")
+    print(file.columns.tolist())
+
+    # See first few rows
+    print("\nFirst few rows:")
+    print(file.head())
+
+    # See data types
+    print("\nColumn types:")
+    print(file.dtypes)
     np_data = file[columns].to_numpy()
     return np_data
 
 def read_hdf_file_as_numpy(filepath: str, property_path: str, separator: str = '.') -> np.ndarray:
+    print("Reading HDF file:", filepath)
     with h5py.File(filepath, 'r') as hec:
         data = get_property_from_path(hec, property_path, separator)
         np_data = np.array(data)
