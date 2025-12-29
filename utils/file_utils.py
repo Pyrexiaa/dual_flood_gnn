@@ -37,7 +37,6 @@ def read_shp_file_as_numpy(filepath: str, columns: str | list) -> np.ndarray:
     return np_data
 
 def read_hdf_file_as_numpy(filepath: str, property_path: str, separator: str = '.') -> np.ndarray:
-    print("Reading HDF file:", filepath)
     with h5py.File(filepath, 'r') as hec:
         data = get_property_from_path(hec, property_path, separator)
         np_data = np.array(data)

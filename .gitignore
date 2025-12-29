@@ -193,3 +193,13 @@ slurm-*.out
 # Extra
 _personal_tests.ipynb
 .DS_Store
+
+# Weight files
+*.pt
+*.pkl
+*.zip
+
+# Shape files
+model1_removed_ghost/*
+model2_removed_ghost/*
+model4_removed_ghost/*

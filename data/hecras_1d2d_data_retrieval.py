@@ -91,6 +91,11 @@ def get_cumulative_rainfall(filepath: str, perimeter_name: str = 'US Beaver', dt
 
     return data
 
+def get_rainfall(filepath: str, perimeter_name: str = 'US Beaver', dtype: np.dtype = np.float32) -> np.ndarray:
+    property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Cell Cumulative Precipitation Depth'
+    data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
+    return data.astype(dtype)
+
 def get_water_level(filepath: str, perimeter_name: str = 'US Beaver', dtype: np.dtype = np.float32) -> np.ndarray:
     property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.2D Flow Areas.{perimeter_name}.Water Surface'
     data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)

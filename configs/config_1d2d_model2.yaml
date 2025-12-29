@@ -12,7 +12,7 @@ dataset_parameters:
   features_stats_file: 'features_stats.yaml'                 # Filename for the yaml file containing feature statistics (mean, std, min, max). Generated when initializing the dataset
 
   previous_timesteps: 1                                      # Number of previous timesteps to consider for input features
-  normalize: False                                            # Whether to normalize features
+  normalize: True                                            # Whether to normalize features
   timestep_interval: 300                                    # Interval between timesteps in seconds
   spin_up_time: 14400
   time_from_peak: null                                       # Time after peak flow to consider in data in seconds. Used to trim the end of the flood event. Set to null to include the entire event
@@ -20,11 +20,11 @@ dataset_parameters:
   outflow_boundary_nodes: null
 
   training:
-    dataset_summary_file: 'fold1_train.csv'                        # Filename of csv file containing the list of training flood events (Run IDs and HEC-RAS file paths)
+    dataset_summary_file: 'train.csv'                        # Filename of csv file containing the list of training flood events (Run IDs and HEC-RAS file paths)
     event_stats_file: 'train_event_stats.yaml'               # Filename for the yaml file containing training event statistics. Generated when initializing the dataset
 
   testing:
-    dataset_summary_file: 'fold1_test.csv'                         # Filename of csv file containing the list of testing flood events (Run IDs and HEC-RAS file paths)
+    dataset_summary_file: 'test.csv'                         # Filename of csv file containing the list of testing flood events (Run IDs and HEC-RAS file paths)
     event_stats_file: 'test_event_stats.yaml'                # Filename for the yaml file containing testing event statistics. Generated when initializing the dataset
 
 training_parameters:

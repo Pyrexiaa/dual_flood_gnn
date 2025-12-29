@@ -12,7 +12,7 @@ from utils.file_utils import read_yaml_file, save_to_yaml_file
 
 from .dem_data_retrieval import get_filled_dem, get_aspect, get_curvature, get_flow_accumulation
 from .hecras_1d2d_data_retrieval import get_1d_flow, get_1d_inlet_flow, get_1d_velocity, get_1d_water_level, get_event_timesteps, get_cell_area, get_roughness,\
-    get_cumulative_rainfall, get_water_level, get_water_volume, get_velocity, get_face_flow
+    get_rainfall, get_water_level, get_water_volume, get_velocity, get_face_flow
 from .shp_1d2d_data_retrieval import get_edge_index, get_cell_elevation, get_edge_length,\
     get_edge_slope, get_cell_position_x, get_cell_position_y, get_cell_position,\
     get_edge_direction_x, get_edge_direction_y, get_face_length,\
@@ -178,6 +178,8 @@ class FloodEvent1D2DDataset(Dataset):
         static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index = self.boundary_condition.remove(
             static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index,
         )
+        node_edge_remapping_path = os.path.join(self.processed_dir, "node_edge_remapping", f"{self.mode}.json")
+        self.boundary_condition.save_remapping(node_edge_remapping_path)
         static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index = self.boundary_condition.apply(
             static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index,
         )
@@ -585,11 +587,15 @@ class FloodEvent1D2DDataset(Dataset):
 
     def _get_dynamic_node_features(self) -> ndarray:
         def get_interval_rainfall(hec_ras_path: str):
-            """Get interval rainfall from cumulative rainfall"""
-            cumulative_rainfall = get_cumulative_rainfall(hec_ras_path, perimeter_name=self.perimeter_name)
-            last_ts_rainfall = np.zeros((1, cumulative_rainfall.shape[1]), dtype=cumulative_rainfall.dtype)
-            intervals = np.diff(cumulative_rainfall, axis=0)
-            interval_rainfall = np.concatenate((intervals, last_ts_rainfall), axis=0)
+            """Get rainfall"""
+            cumulative_rainfall = get_rainfall(
+                hec_ras_path,
+                perimeter_name=self.perimeter_name
+            ).astype(np.float64)
+            interval_rainfall = np.empty_like(cumulative_rainfall)
+            interval_rainfall[:] = np.nan                
+            interval_rainfall[1:] = cumulative_rainfall[1:] - cumulative_rainfall[:-1]
+            interval_rainfall[0] = cumulative_rainfall[0] 
             return interval_rainfall
 
         edge_index = get_edge_index(self.raw_paths[4])

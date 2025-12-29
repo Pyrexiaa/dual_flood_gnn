@@ -1,0 +1,57 @@
+{
+  "train_samples": 1071371,
+  "train_1d": 4879,
+  "train_2d": 1066492,
+  "test_samples": 1071371,
+  "test_1d": 4879,
+  "test_2d": 1066492,
+  "input_dim": 14,
+  "window_size": 5,
+  "batch_size": 16,
+  "num_batches_analyzed": 3,
+  "batch_statistics": [
+    {
+      "batch_idx": 0,
+      "total_samples": 16,
+      "n_1d": 16,
+      "n_2d": 0,
+      "input_min": -0.35571423172950745,
+      "input_max": 1.3230689764022827,
+      "input_mean": 0.09558238089084625,
+      "input_std": 0.3672599196434021,
+      "target_min": -0.815533459186554,
+      "target_max": -0.7847040891647339,
+      "target_mean": -0.7992984652519226,
+      "target_std": 0.01117695216089487
+    },
+    {
+      "batch_idx": 1,
+      "total_samples": 16,
+      "n_1d": 16,
+      "n_2d": 0,
+      "input_min": -0.35571423172950745,
+      "input_max": 1.3230689764022827,
+      "input_mean": 0.09558238089084625,
+      "input_std": 0.3672599196434021,
+      "target_min": -0.9444798231124878,
+      "target_max": -0.7875086069107056,
+      "target_mean": -0.91093510389328,
+      "target_std": 0.04632032662630081
+    },
+    {
+      "batch_idx": 2,
+      "total_samples": 16,
+      "n_1d": 16,
+      "n_2d": 0,
+      "input_min": -0.35571423172950745,
+      "input_max": 1.3230689764022827,
+      "input_mean": 0.09558238089084625,
+      "input_std": 0.3672599196434021,
+      "target_min": -0.9498493075370789,
+      "target_max": -0.9453051686286926,
+      "target_mean": -0.9481496810913086,
+      "target_std": 0.0014237860450521111
+    }
+  ],
+  "note": "Using separate normalizers for 1D and 2D data"
+}
