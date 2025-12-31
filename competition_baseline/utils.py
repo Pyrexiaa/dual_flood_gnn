@@ -1,6 +1,15 @@
 from pathlib import Path
 import pandas as pd
 import numpy as np
+from torch import Tensor
+import torch
+
+def NSE(pred: Tensor, target: Tensor) -> Tensor:
+    """Nash Sutcliffe Efficiency"""
+    model_sse = torch.sum((target - pred) ** 2)
+    mean_model_sse = torch.sum((target - target.mean()) ** 2)
+    return 1 - (model_sse / mean_model_sse)
+
 
 
 def load_static(event_dir):
@@ -29,17 +38,35 @@ def load_static(event_dir):
 def load_dynamic(event_dir):
     dyn = {}
 
-    dyn["1d_node"] = pd.read_csv(f"{event_dir}/1d_nodes_dynamic_all.csv")
-    dyn["1d_edge"] = pd.read_csv(f"{event_dir}/1d_edges_dynamic_all.csv")
-    dyn["1d_edge"] = dyn["1d_edge"].rename(
-        columns={"flow": "1d_flow", "velocity": "1d_velocity"}
+    selected_1d_node_cols = [
+        "timestep",
+        "node_idx",
+        "water_level"
+    ]
+    dyn["1d_node"] = pd.read_csv(f"{event_dir}/1d_nodes_dynamic_all.csv", usecols=selected_1d_node_cols)
+
+    selected_1d_edge_cols = [
+        "timestep",
+        "edge_idx",
+    ]
+    dyn["1d_edge"] = pd.read_csv(f"{event_dir}/1d_edges_dynamic_all.csv", usecols=selected_1d_edge_cols)
+
+    selected_2d_node_cols = [
+        "timestep",
+        "node_idx",
+        "rainfall",
+        "water_level"
+    ]
+    dyn["2d_node"] = pd.read_csv(
+        f"{event_dir}/2d_nodes_dynamic_all.csv",
+        usecols=selected_2d_node_cols
     )
 
-    dyn["2d_node"] = pd.read_csv(f"{event_dir}/2d_nodes_dynamic_all.csv")
-    dyn["2d_edge"] = pd.read_csv(f"{event_dir}/2d_edges_dynamic_all.csv")
-    dyn["2d_edge"] = dyn["2d_edge"].rename(
-        columns={"flow": "2d_flow", "velocity": "2d_velocity"}
-    )
+    selected_2d_edge_cols = [
+        "timestep",
+        "edge_idx",
+    ]
+    dyn["2d_edge"] = pd.read_csv(f"{event_dir}/2d_edges_dynamic_all.csv", usecols=selected_2d_edge_cols)
     dyn["timesteps"] = pd.read_csv(f"{event_dir}/timesteps.csv")
 
     return dyn
@@ -99,7 +126,6 @@ def make_samples(node_df, window):
 
     return X, y
 
-
 def evaluate_predictions(pred_csv_path, split_by_node_type=True, save_metrics=True):
     """
     Evaluate predictions from CSV file and optionally save metrics to CSV.
@@ -126,6 +152,11 @@ def evaluate_predictions(pred_csv_path, split_by_node_type=True, save_metrics=Tr
     mae = np.mean(np.abs(y_true - y_pred))
     mape = np.mean(np.abs((y_true - y_pred) / (np.abs(y_true) + 1e-8))) * 100
     r2 = 1 - (np.sum((y_true - y_pred) ** 2) / np.sum((y_true - y_true.mean()) ** 2))
+    
+    # Convert to tensors for NSE calculation
+    y_pred_tensor = torch.tensor(y_pred, dtype=torch.float32)
+    y_true_tensor = torch.tensor(y_true, dtype=torch.float32)
+    nse = NSE(y_pred_tensor, y_true_tensor).item()
 
     print("\nOverall Metrics:")
     print(f"  Samples: {len(df)}")
@@ -133,6 +164,7 @@ def evaluate_predictions(pred_csv_path, split_by_node_type=True, save_metrics=Tr
     print(f"  MAE:  {mae:.4f}")
     print(f"  MAPE: {mape:.2f}%")
     print(f"  R²:   {r2:.4f}")
+    print(f"  NSE:  {nse:.4f}")
 
     results = {
         "metric_type": "overall",
@@ -141,6 +173,7 @@ def evaluate_predictions(pred_csv_path, split_by_node_type=True, save_metrics=Tr
         "mae": mae,
         "mape": mape,
         "r2": r2,
+        "nse": nse,
     }
 
     # Store metrics in list for CSV export
@@ -165,17 +198,23 @@ def evaluate_predictions(pred_csv_path, split_by_node_type=True, save_metrics=Tr
                 np.sum((y_true_1d - y_pred_1d) ** 2)
                 / np.sum((y_true_1d - y_true_1d.mean()) ** 2)
             )
+            # Convert to tensors for NSE calculation
+            y_pred_1d_tensor = torch.tensor(y_pred_1d, dtype=torch.float32)
+            y_true_1d_tensor = torch.tensor(y_true_1d, dtype=torch.float32)
+            nse_1d = NSE(y_pred_1d_tensor, y_true_1d_tensor).item()
 
             print(f"  Samples: {len(df_1d)}")
             print(f"  RMSE: {rmse_1d:.4f}")
             print(f"  MAE:  {mae_1d:.4f}")
             print(f"  MAPE: {mape_1d:.2f}%")
             print(f"  R²:   {r2_1d:.4f}")
+            print(f"  NSE:  {nse_1d:.4f}")
 
             results["rmse_1d"] = rmse_1d
             results["mae_1d"] = mae_1d
             results["mape_1d"] = mape_1d
             results["r2_1d"] = r2_1d
+            results["nse_1d"] = nse_1d
             results["n_samples_1d"] = len(df_1d)
 
             # Add to metrics list
@@ -187,6 +226,7 @@ def evaluate_predictions(pred_csv_path, split_by_node_type=True, save_metrics=Tr
                     "mae": mae_1d,
                     "mape": mape_1d,
                     "r2": r2_1d,
+                    "nse": nse_1d,
                 }
             )
         else:
@@ -210,17 +250,23 @@ def evaluate_predictions(pred_csv_path, split_by_node_type=True, save_metrics=Tr
                 np.sum((y_true_2d - y_pred_2d) ** 2)
                 / np.sum((y_true_2d - y_true_2d.mean()) ** 2)
             )
+            # Convert to tensors for NSE calculation
+            y_pred_2d_tensor = torch.tensor(y_pred_2d, dtype=torch.float32)
+            y_true_2d_tensor = torch.tensor(y_true_2d, dtype=torch.float32)
+            nse_2d = NSE(y_pred_2d_tensor, y_true_2d_tensor).item()
 
             print(f"  Samples: {len(df_2d)}")
             print(f"  RMSE: {rmse_2d:.4f}")
             print(f"  MAE:  {mae_2d:.4f}")
             print(f"  MAPE: {mape_2d:.2f}%")
             print(f"  R²:   {r2_2d:.4f}")
+            print(f"  NSE:  {nse_2d:.4f}")
 
             results["rmse_2d"] = rmse_2d
             results["mae_2d"] = mae_2d
             results["mape_2d"] = mape_2d
             results["r2_2d"] = r2_2d
+            results["nse_2d"] = nse_2d
             results["n_samples_2d"] = len(df_2d)
 
             # Add to metrics list
@@ -232,6 +278,7 @@ def evaluate_predictions(pred_csv_path, split_by_node_type=True, save_metrics=Tr
                     "mae": mae_2d,
                     "mape": mape_2d,
                     "r2": r2_2d,
+                    "nse": nse_2d,
                 }
             )
         else:
@@ -304,7 +351,8 @@ def evaluate_predictions(pred_csv_path, split_by_node_type=True, save_metrics=Tr
             f.write(f"RMSE:        {rmse:>12.4f}\n")
             f.write(f"MAE:         {mae:>12.4f}\n")
             f.write(f"MAPE:        {mape:>12.2f}%\n")
-            f.write(f"R²:          {r2:>12.4f}\n\n")
+            f.write(f"R²:          {r2:>12.4f}\n")
+            f.write(f"NSE:         {nse:>12.4f}\n\n")
 
             if "rmse_1d" in results:
                 f.write("1D NODE METRICS\n")
@@ -313,7 +361,8 @@ def evaluate_predictions(pred_csv_path, split_by_node_type=True, save_metrics=Tr
                 f.write(f"RMSE:        {results['rmse_1d']:>12.4f}\n")
                 f.write(f"MAE:         {results['mae_1d']:>12.4f}\n")
                 f.write(f"MAPE:        {results['mape_1d']:>12.2f}%\n")
-                f.write(f"R²:          {results['r2_1d']:>12.4f}\n\n")
+                f.write(f"R²:          {results['r2_1d']:>12.4f}\n")
+                f.write(f"NSE:         {results['nse_1d']:>12.4f}\n\n")
 
             if "rmse_2d" in results:
                 f.write("2D NODE METRICS\n")
@@ -322,7 +371,8 @@ def evaluate_predictions(pred_csv_path, split_by_node_type=True, save_metrics=Tr
                 f.write(f"RMSE:        {results['rmse_2d']:>12.4f}\n")
                 f.write(f"MAE:         {results['mae_2d']:>12.4f}\n")
                 f.write(f"MAPE:        {results['mape_2d']:>12.2f}%\n")
-                f.write(f"R²:          {results['r2_2d']:>12.4f}\n\n")
+                f.write(f"R²:          {results['r2_2d']:>12.4f}\n")
+                f.write(f"NSE:         {results['nse_2d']:>12.4f}\n\n")
 
             f.write("ERROR DISTRIBUTION\n")
             f.write("-" * 80 + "\n")

@@ -1,7 +1,7 @@
 from constants import FEATURE_NAMES
 from debug import full_debug_workflow
 from save import save_predictions
-from utils import evaluate_predictions
+from utils import evaluate_predictions, NSE
 from scaler import SequenceNormalizer
 from model import TwoHeadGRU
 from dataset import CombinedDataset, WaterLevelDataset1D, WaterLevelDataset2D
@@ -49,7 +49,7 @@ def create_filtered_datasets(
 
     # Create 1D training dataset
     print("\n1. Creating 1D TRAINING dataset...")
-    print("   Features: 1d_position_x, 1d_position_y, inlet_flow (+ zero padding)")
+    print("   Features: 1d_position_x, 1d_position_y")
     train_1d = WaterLevelDataset1D(
         event_dirs=train_events,
         window=window,
@@ -65,7 +65,7 @@ def create_filtered_datasets(
     # Create 2D training dataset
     print("\n2. Creating 2D TRAINING dataset...")
     print("   Features: 2d_position_x/y, area, roughness, elevation, aspect,")
-    print("             curvature, flow_accumulation, slope, rainfall, water_volume")
+    print("             curvature, flow_accumulation, slope, rainfall")
     train_2d = WaterLevelDataset2D(
         event_dirs=train_events,
         window=window,
@@ -239,11 +239,12 @@ def train(
     # =====================
     # DATA LOADERS
     # =====================
+    # NOTE: Change num_workers to 2 when using compute clusters, else 0
     train_loader = DataLoader(
-        train_combined, batch_size=batch_size, shuffle=True, num_workers=0
+        train_combined, batch_size=batch_size, shuffle=True, num_workers=2
     )
     test_loader = DataLoader(
-        test_combined, batch_size=batch_size, shuffle=False, num_workers=0
+        test_combined, batch_size=batch_size, shuffle=False, num_workers=2
     )
 
     print("\nData Loaders:")
@@ -281,6 +282,10 @@ def train(
     best_val_rmse = float("inf")
     best_val_rmse_1d = float("inf")
     best_val_rmse_2d = float("inf")
+    best_val_nse = float("-inf")
+    best_val_nse_modified = float("-inf")
+    best_val_nse_1d = float("-inf")
+    best_val_nse_2d = float("-inf")
 
     # =====================
     # TRAINING LOOP
@@ -302,6 +307,14 @@ def train(
         n_samples_1d = 0
         n_samples_2d = 0
 
+        # For NSE calculation (accumulate predictions and targets)
+        train_preds_all = []
+        train_targets_all = []
+        train_preds_1d = []
+        train_targets_1d = []
+        train_preds_2d = []
+        train_targets_2d = []
+
         for batch_idx, (X, y, node_type) in enumerate(train_loader):
             X = X.to(device)  # (batch, window, features)
             y = y.to(device)  # (batch, 1)
@@ -321,6 +334,10 @@ def train(
             train_loss_sum += loss.item() * batch_size_actual
             n_samples_total += batch_size_actual
 
+            # Accumulate for NSE
+            train_preds_all.append(pred.detach())
+            train_targets_all.append(y.detach())
+
             # Track per-type losses
             mask_1d = node_type == 0
             mask_2d = node_type == 1
@@ -331,11 +348,17 @@ def train(
                 train_loss_1d += loss_1d_batch * count_1d
                 n_samples_1d += count_1d
 
+                train_preds_1d.append(pred[mask_1d].detach())
+                train_targets_1d.append(y[mask_1d].detach())
+
             if mask_2d.any():
                 loss_2d_batch = criterion(pred[mask_2d], y[mask_2d]).item()
                 count_2d = mask_2d.sum().item()
                 train_loss_2d += loss_2d_batch * count_2d
                 n_samples_2d += count_2d
+
+                train_preds_2d.append(pred[mask_2d].detach())
+                train_targets_2d.append(y[mask_2d].detach())
 
         # Compute training metrics
         train_rmse = (train_loss_sum / n_samples_total) ** 0.5
@@ -344,6 +367,29 @@ def train(
         )
         train_rmse_2d = (
             (train_loss_2d / n_samples_2d) ** 0.5 if n_samples_2d > 0 else 0.0
+        )
+
+        # Compute training NSE
+        train_preds_all = torch.cat(train_preds_all, dim=0)
+        train_targets_all = torch.cat(train_targets_all, dim=0)
+        train_nse = NSE(train_preds_all, train_targets_all).item()
+
+        train_nse_1d = 0.0
+        if len(train_preds_1d) > 0:
+            train_preds_1d = torch.cat(train_preds_1d, dim=0)
+            train_targets_1d = torch.cat(train_targets_1d, dim=0)
+            train_nse_1d = NSE(train_preds_1d, train_targets_1d).item()
+
+        train_nse_2d = 0.0
+        if len(train_preds_2d) > 0:
+            train_preds_2d = torch.cat(train_preds_2d, dim=0)
+            train_targets_2d = torch.cat(train_targets_2d, dim=0)
+            train_nse_2d = NSE(train_preds_2d, train_targets_2d).item()
+
+        train_nse_modified = (
+            (train_nse_1d + train_nse_2d) / 2
+            if (n_samples_1d > 0 and n_samples_2d > 0)
+            else train_nse
         )
 
         # =====================
@@ -361,6 +407,14 @@ def train(
         v_samples_1d = 0
         v_samples_2d = 0
 
+        # For NSE calculation
+        val_preds_all = []
+        val_targets_all = []
+        val_preds_1d = []
+        val_targets_1d = []
+        val_preds_2d = []
+        val_targets_2d = []
+
         with torch.no_grad():
             for X, y, node_type in test_loader:
                 X = X.to(device)
@@ -374,6 +428,10 @@ def train(
                 val_loss_sum += loss.item() * batch_size_actual
                 v_samples_total += batch_size_actual
 
+                # Accumulate for NSE
+                val_preds_all.append(pred)
+                val_targets_all.append(y)
+
                 # Per-type validation losses
                 mask_1d = node_type == 0
                 mask_2d = node_type == 1
@@ -384,45 +442,79 @@ def train(
                     val_loss_1d += loss_1d_batch * count_1d
                     v_samples_1d += count_1d
 
+                    val_preds_1d.append(pred[mask_1d])
+                    val_targets_1d.append(y[mask_1d])
+
                 if mask_2d.any():
                     loss_2d_batch = criterion(pred[mask_2d], y[mask_2d]).item()
                     count_2d = mask_2d.sum().item()
                     val_loss_2d += loss_2d_batch * count_2d
                     v_samples_2d += count_2d
 
-        # Compute validation metrics
+                    val_preds_2d.append(pred[mask_2d])
+                    val_targets_2d.append(y[mask_2d])
+
+        # Compute validation RMSE
         val_rmse = (val_loss_sum / v_samples_total) ** 0.5
         val_rmse_1d = (val_loss_1d / v_samples_1d) ** 0.5 if v_samples_1d > 0 else 0.0
         val_rmse_2d = (val_loss_2d / v_samples_2d) ** 0.5 if v_samples_2d > 0 else 0.0
+
+        # Compute validation NSE
+        val_preds_all = torch.cat(val_preds_all, dim=0)
+        val_targets_all = torch.cat(val_targets_all, dim=0)
+        val_nse = NSE(val_preds_all, val_targets_all).item()
+
+        val_nse_1d = 0.0
+        if len(val_preds_1d) > 0:
+            val_preds_1d = torch.cat(val_preds_1d, dim=0)
+            val_targets_1d = torch.cat(val_targets_1d, dim=0)
+            val_nse_1d = NSE(val_preds_1d, val_targets_1d).item()
+
+        val_nse_2d = 0.0
+        if len(val_preds_2d) > 0:
+            val_preds_2d = torch.cat(val_preds_2d, dim=0)
+            val_targets_2d = torch.cat(val_targets_2d, dim=0)
+            val_nse_2d = NSE(val_preds_2d, val_targets_2d).item()
+
+        val_nse_modified = (
+            (val_nse_1d + val_nse_2d) / 2
+            if (v_samples_1d > 0 and v_samples_2d > 0)
+            else val_nse
+        )
 
         # =====================
         # LOGGING
         # =====================
         print(
-            f"Epoch {epoch + 1:03d}/{epochs} | "
-            f"Train RMSE: {train_rmse:.4f} "
-            f"(1D: {train_rmse_1d:.4f}, 2D: {train_rmse_2d:.4f}) | "
-            f"Val RMSE: {val_rmse:.4f} "
-            f"(1D: {val_rmse_1d:.4f}, 2D: {val_rmse_2d:.4f})"
+            f"Epoch {epoch + 1:03d}/{epochs}\n"
+            f"  Train RMSE: {train_rmse:.4f} (1D: {train_rmse_1d:.4f}, 2D: {train_rmse_2d:.4f})\n"
+            f"  Train NSE:  {train_nse:.4f} (1D: {train_nse_1d:.4f}, 2D: {train_nse_2d:.4f})\n"
+            f"  Val RMSE:   {val_rmse:.4f} (1D: {val_rmse_1d:.4f}, 2D: {val_rmse_2d:.4f})\n"
+            f"  Val NSE:    {val_nse:.4f} (1D: {val_nse_1d:.4f}, 2D: {val_nse_2d:.4f})"
         )
 
         # =====================
         # CHECKPOINT SAVING
         # =====================
-
-        # Main Evaluation Metric: Overall Validation RMSE / NSE depends on the results
-
         if save_checkpoints:
             checkpoint = {
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
+                "modified_train_nse": train_nse_modified,
+                "modified_val_nse": val_nse_modified,
                 "train_rmse": train_rmse,
                 "train_rmse_1d": train_rmse_1d,
                 "train_rmse_2d": train_rmse_2d,
+                "train_nse": train_nse,
+                "train_nse_1d": train_nse_1d,
+                "train_nse_2d": train_nse_2d,
                 "val_rmse": val_rmse,
                 "val_rmse_1d": val_rmse_1d,
                 "val_rmse_2d": val_rmse_2d,
+                "val_nse": val_nse,
+                "val_nse_1d": val_nse_1d,
+                "val_nse_2d": val_nse_2d,
                 "input_dim_1d": input_dim,
                 "input_dim_2d": input_dim,
                 "hidden_dim": hidden_dim,
@@ -435,23 +527,57 @@ def train(
                 checkpoint, checkpoint_path / f"checkpoint_epoch_{epoch + 1:03d}.pt"
             )
 
-            # Save best overall model
+            # Save best overall model (by RMSE)
             if val_rmse < best_val_rmse:
                 best_val_rmse = val_rmse
-                torch.save(checkpoint, checkpoint_path / "best_model_overall.pt")
-                print(f"  → Saved best overall model (val_rmse: {val_rmse:.4f})")
+                torch.save(checkpoint, checkpoint_path / "best_model_overall_rmse.pt")
+                print(
+                    f"  → Saved best overall model by RMSE (val_rmse: {val_rmse:.4f})"
+                )
 
-            # Save best 1D model
+            # Save best overall model (by NSE)
+            if val_nse > best_val_nse:
+                best_val_nse = val_nse
+                torch.save(checkpoint, checkpoint_path / "best_model_overall_nse.pt")
+                print(f"  → Saved best overall model by NSE (val_nse: {val_nse:.4f})")
+
+            # Save best overall model (by Modified NSE)
+            if val_nse_modified > best_val_nse_modified:
+                best_val_nse_modified = val_nse_modified
+                torch.save(
+                    checkpoint, checkpoint_path / "best_model_overall_nse_modified.pt"
+                )
+                print(
+                    f"  → Saved best overall model by Modified NSE (val_nse_modified: {val_nse_modified:.4f})"
+                )
+
+            # Save best 1D model (by RMSE)
             if val_rmse_1d < best_val_rmse_1d and v_samples_1d > 0:
                 best_val_rmse_1d = val_rmse_1d
-                torch.save(checkpoint, checkpoint_path / "best_model_1d.pt")
-                print(f"  → Saved best 1D model (val_rmse_1d: {val_rmse_1d:.4f})")
+                torch.save(checkpoint, checkpoint_path / "best_model_1d_rmse.pt")
+                print(
+                    f"  → Saved best 1D model by RMSE (val_rmse_1d: {val_rmse_1d:.4f})"
+                )
 
-            # Save best 2D model
+            # Save best 1D model (by NSE)
+            if val_nse_1d > best_val_nse_1d and v_samples_1d > 0:
+                best_val_nse_1d = val_nse_1d
+                torch.save(checkpoint, checkpoint_path / "best_model_1d_nse.pt")
+                print(f"  → Saved best 1D model by NSE (val_nse_1d: {val_nse_1d:.4f})")
+
+            # Save best 2D model (by RMSE)
             if val_rmse_2d < best_val_rmse_2d and v_samples_2d > 0:
                 best_val_rmse_2d = val_rmse_2d
-                torch.save(checkpoint, checkpoint_path / "best_model_2d.pt")
-                print(f"  → Saved best 2D model (val_rmse_2d: {val_rmse_2d:.4f})")
+                torch.save(checkpoint, checkpoint_path / "best_model_2d_rmse.pt")
+                print(
+                    f"  → Saved best 2D model by RMSE (val_rmse_2d: {val_rmse_2d:.4f})"
+                )
+
+            # Save best 2D model (by NSE)
+            if val_nse_2d > best_val_nse_2d and v_samples_2d > 0:
+                best_val_nse_2d = val_nse_2d
+                torch.save(checkpoint, checkpoint_path / "best_model_2d_nse.pt")
+                print(f"  → Saved best 2D model by NSE (val_nse_2d: {val_nse_2d:.4f})")
 
         print()  # Empty line for readability
 
@@ -464,12 +590,20 @@ def train(
     print(f"Best Validation RMSE (Overall): {best_val_rmse:.4f}")
     print(f"Best Validation RMSE (1D): {best_val_rmse_1d:.4f}")
     print(f"Best Validation RMSE (2D): {best_val_rmse_2d:.4f}")
+    print(f"Best Validation NSE (Modified Overall): {best_val_nse_modified:.4f}")
+    print(f"Best Validation NSE (Overall): {best_val_nse:.4f}")
+    print(f"Best Validation NSE (1D): {best_val_nse_1d:.4f}")
+    print(f"Best Validation NSE (2D): {best_val_nse_2d:.4f}")
 
     if save_checkpoints:
         print(f"\nCheckpoints saved to: {checkpoint_path.absolute()}")
-        print("  - best_model_overall.pt")
-        print("  - best_model_1d.pt")
-        print("  - best_model_2d.pt")
+        print("  - best_model_overall_rmse.pt")
+        print("  - best_model_overall_nse.pt")
+        print("  - best_model_overall_nse_modified.pt")
+        print("  - best_model_1d_rmse.pt")
+        print("  - best_model_1d_nse.pt")
+        print("  - best_model_2d_rmse.pt")
+        print("  - best_model_2d_nse.pt")
         print("  - checkpoint_epoch_*.pt (all epochs)")
 
     print("=" * 80 + "\n")
@@ -484,6 +618,7 @@ def train(
 
 
 def load_model_and_predict(
+    max_events=None,
     checkpoint_path="./two_head_checkpoints/best_model_overall.pt",
     test_events=Path("data/Model1/processed/features_csv/test/"),
     normalizer_1d_path="train_normalizer_two_head_1d.pkl",
@@ -565,7 +700,7 @@ def load_model_and_predict(
         fit_normalizer=False,  # Use pre-fitted normalizer
         return_sequence=True,
         debug=False,
-        max_events=None,
+        max_events=max_events,
         verbose=True,
     )
 
@@ -578,9 +713,21 @@ def load_model_and_predict(
         fit_normalizer=False,  # Use pre-fitted normalizer
         return_sequence=True,
         debug=False,
-        max_events=None,
+        max_events=max_events,
         verbose=True,
     )
+
+    # In load_model_and_predict(), after creating datasets:
+    print("\n   Dataset feature dimensions:")
+    print(f"   - 1D features: {test_1d.dataset.X.shape[-1]}")
+    print(f"   - 2D features: {test_2d.dataset.X.shape[-1]}")
+    print(f"   - Model expects: {input_dim}")
+
+    # Add assertion to catch mismatch
+    assert test_1d.dataset.X.shape[-1] == input_dim, \
+        f"1D feature mismatch! Dataset has {test_1d.dataset.X.shape[-1]}, model expects {input_dim}"
+    assert test_2d.dataset.X.shape[-1] == input_dim, \
+        f"2D feature mismatch! Dataset has {test_2d.dataset.X.shape[-1]}, model expects {input_dim}"
 
     # Combine datasets
     test_combined = CombinedDataset(test_1d, test_2d)
@@ -617,8 +764,9 @@ def load_model_and_predict(
 
 
 if __name__ == "__main__":
-    train_events = Path("data/Model1/processed/features_csv/train/")
-    test_events = Path("data/Model1/processed/features_csv/test/")
+    model_name = "Model1"
+    train_events = Path(f"data/{model_name}/processed/features_csv/train/")
+    test_events = Path(f"data/{model_name}/processed/features_csv/test/")
 
     debug_dataset = False
     if debug_dataset:
@@ -649,8 +797,8 @@ if __name__ == "__main__":
             debug_trained_normalizer_2d,
         )
 
-    train = False
-    if train:
+    train_bool = True
+    if train_bool:
         new_normalizer_1d = SequenceNormalizer()
         new_normalizer_2d = SequenceNormalizer()
         model, train_ds, test_ds, trained_normalizer_1d, trained_normalizer_2d = train(
@@ -660,7 +808,7 @@ if __name__ == "__main__":
             max_events=None,  # Set None to use full dataset
             normalizer_1d=new_normalizer_1d,
             normalizer_2d=new_normalizer_2d,
-            epochs=10,
+            epochs=1,
             lr=1e-3,
             batch_size=32,
             hidden_dim=128,
@@ -686,7 +834,8 @@ if __name__ == "__main__":
     test_only = False
     if test_only:
         load_model_and_predict(
-            checkpoint_path="./two_head_checkpoints/best_model_overall.pt",
+            max_events=None,
+            checkpoint_path="./two_head_checkpoints/best_model_overall_nse.pt",
             test_events=test_events,
             normalizer_1d_path="train_normalizer_two_head_1d.pkl",
             normalizer_2d_path="train_normalizer_two_head_2d.pkl",
