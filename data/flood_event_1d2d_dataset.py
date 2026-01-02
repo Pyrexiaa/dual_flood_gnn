@@ -11,18 +11,18 @@ from utils.logger import Logger
 from utils.file_utils import read_yaml_file, save_to_yaml_file
 
 from .dem_data_retrieval import get_filled_dem, get_aspect, get_curvature, get_flow_accumulation
-from .hecras_1d2d_data_retrieval import get_1d_flow, get_1d_inlet_flow, get_1d_velocity, get_1d_water_level, get_event_timesteps, get_cell_area, get_roughness,\
+from .hecras_1d2d_data_retrieval import get_1d_flow, get_1d_inlet_flow, get_1d_velocity, get_1d_water_level, get_event_timesteps, get_cell_area, get_min_cell_elevation, get_roughness,\
     get_rainfall, get_water_level, get_water_volume, get_velocity, get_face_flow
-from .shp_1d2d_data_retrieval import get_edge_index, get_cell_elevation, get_edge_length,\
+from .shp_1d2d_data_retrieval import get_1d_base_area, get_1d_cell_depth, get_1d_edge_diameter, get_1d_edge_manning, get_1d_edge_relative_position, get_1d_edge_shape, get_1d_edge_slope, get_1d_invert_elevation, get_1d_surface_elevation, get_edge_index, get_cell_elevation, get_edge_length,\
     get_edge_slope, get_cell_position_x, get_cell_position_y, get_cell_position,\
     get_edge_direction_x, get_edge_direction_y, get_face_length,\
-    get_1d_edge_index, get_1d_edge_length, get_1d2d_edge_index
+    get_1d_edge_index, get_1d_edge_length, get_1d2d_edge_index, get_min_elevation, get_relative_position
 from .boundary_1d2d_condition import Boundary1d2dCondition
 from .dataset_normalizer import DatasetNormalizer
 
 class FloodEvent1D2DDataset(Dataset):
     # --- Existing 2D Constants ---
-    STATIC_NODE_FEATURES = ['position_x', 'position_y', 'area', 'roughness', 'elevation', 'aspect', 'curvature', 'flow_accumulation']
+    STATIC_NODE_FEATURES = ['position_x', 'position_y', 'area', 'roughness', 'min_elevation', 'elevation', 'aspect', 'curvature', 'flow_accumulation']
     DYNAMIC_NODE_FEATURES = ['rainfall', 'water_level', 'water_volume']
     STATIC_EDGE_FEATURES = ['relative_position_x', 'relative_position_y', 'face_length', 'length', 'slope']
     DYNAMIC_EDGE_FEATURES = ['flow', 'velocity']
@@ -30,9 +30,9 @@ class FloodEvent1D2DDataset(Dataset):
     EDGE_TARGET_FEATURE = 'flow'
 
     # --- New 1D Constants ---
-    STATIC_1D_NODE_FEATURES = ['position_x', 'position_y']
+    STATIC_1D_NODE_FEATURES = ['position_x', 'position_y', 'depth', 'invert_elevation', 'surface_elevation', 'base_area']
     DYNAMIC_1D_NODE_FEATURES = ['water_level', 'inlet_flow']
-    STATIC_1D_EDGE_FEATURES = ['length']
+    STATIC_1D_EDGE_FEATURES = ['relative_position_x', 'relative_position_y', 'length', 'diameter', 'shape', 'roughness', 'slope']
     DYNAMIC_1D_EDGE_FEATURES = ['flow', 'velocity']
     NODE_1D_TARGET_FEATURE = 'water_level'
     EDGE_1D_TARGET_FEATURE = 'flow'
@@ -167,13 +167,7 @@ class FloodEvent1D2DDataset(Dataset):
         dynamic_nodes = self._get_dynamic_node_features()
         static_edges = self._get_static_edge_features()
         dynamic_edges = self._get_dynamic_edge_features()
-
-        print("Debug Edge Index: ",edge_index)
-        print("Debug Static Nodes: ",static_nodes)
-        print("Debug Static Edges: ",static_edges)
-        print("Debug Dynamic Nodes: ",dynamic_nodes)
-        print("Debug Dynamic Edges: ",dynamic_edges)
-
+        
         self.boundary_condition.create(edge_index, dynamic_edges)
         static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index = self.boundary_condition.remove(
             static_nodes, dynamic_nodes, static_edges, dynamic_edges, edge_index,
@@ -486,6 +480,10 @@ class FloodEvent1D2DDataset(Dataset):
         STATIC_1D_NODE_RETRIEVAL_MAP = {
             "position_x": lambda: get_cell_position_x(self.raw_paths[0]),
             "position_y": lambda: get_cell_position_y(self.raw_paths[0]),
+            "depth": lambda: get_1d_cell_depth(self.raw_paths[0]),
+            "invert_elevation": lambda: get_1d_invert_elevation(self.raw_paths[0]),
+            "surface_elevation": lambda: get_1d_surface_elevation(self.raw_paths[0]),
+            "base_area": lambda: get_1d_base_area(self.raw_paths[0]),
         }
         static_features = self._get_features(feature_list=self.STATIC_1D_NODE_FEATURES,
                                   feature_retrieval_map=STATIC_1D_NODE_RETRIEVAL_MAP)
@@ -495,6 +493,12 @@ class FloodEvent1D2DDataset(Dataset):
     def _get_static_1d_edge_features(self) -> ndarray:
         STATIC_1D_EDGE_RETRIEVAL_MAP = {
             "length": lambda: get_1d_edge_length(self.raw_paths[1]),
+            "shape": lambda: get_1d_edge_shape(self.raw_paths[1]),
+            "diameter": lambda: get_1d_edge_diameter(self.raw_paths[1]),
+            "roughness": lambda: get_1d_edge_manning(self.raw_paths[1]),
+            "slope": lambda: get_1d_edge_slope(self.raw_paths[1]),
+            "relative_position_x": lambda: get_1d_edge_relative_position('x', self.raw_paths[0], self.raw_paths[1]),
+            "relative_position_y": lambda: get_1d_edge_relative_position('y', self.raw_paths[0], self.raw_paths[1]),
         }
         static_features = self._get_features(feature_list=self.STATIC_1D_EDGE_FEATURES,
                                   feature_retrieval_map=STATIC_1D_EDGE_RETRIEVAL_MAP)
@@ -549,6 +553,7 @@ class FloodEvent1D2DDataset(Dataset):
             "area": lambda: get_cell_area(self.raw_paths[6], perimeter_name=self.perimeter_name),
             "roughness": lambda: get_roughness(self.raw_paths[6], perimeter_name=self.perimeter_name),
             "elevation": lambda: get_cell_elevation(self.raw_paths[3]),
+            "min_elevation": lambda: get_min_elevation(self.raw_paths[3]),
             "position_x": lambda: get_cell_position_x(self.raw_paths[3]),
             "position_y": lambda: get_cell_position_y(self.raw_paths[3]),
             "aspect": lambda: _get_aspect(self.raw_paths[3], self.raw_paths[5]),
@@ -562,13 +567,6 @@ class FloodEvent1D2DDataset(Dataset):
         return static_features
 
     def _get_static_edge_features(self) -> ndarray:
-        def get_relative_position(coord: Literal['x', 'y'], nodes_shp_path: str, edges_shp_path: str) -> ndarray:
-            pos_retrieval_func = get_cell_position_x if coord == 'x' else get_cell_position_y
-            position = pos_retrieval_func(nodes_shp_path)
-            edge_index = get_edge_index(edges_shp_path)
-            row, col = edge_index
-            relative_pos = position[row] - position[col]
-            return relative_pos
 
         STATIC_EDGE_RETRIEVAL_MAP = {
             "direction_x": lambda: get_edge_direction_x(self.raw_paths[4]),

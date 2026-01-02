@@ -1,5 +1,7 @@
+from typing import Literal
 import numpy as np
 import geopandas as gpd
+from numpy import ndarray
 from utils.file_utils import read_shp_file_as_numpy
 
 
@@ -25,6 +27,13 @@ def get_cell_position(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray
     data = np.column_stack([x_coords, y_coords])
     return data.astype(dtype)
 
+def get_relative_position(coord: Literal['x', 'y'], nodes_shp_path: str, edges_shp_path: str) -> ndarray:
+    pos_retrieval_func = get_cell_position_x if coord == 'x' else get_cell_position_y
+    position = pos_retrieval_func(nodes_shp_path)
+    edge_index = get_edge_index(edges_shp_path)
+    row, col = edge_index
+    relative_pos = position[row] - position[col]
+    return relative_pos
 
 def get_edge_index(filepath: str) -> np.ndarray:
     """Get edge connectivity from shapefile"""
@@ -33,13 +42,17 @@ def get_edge_index(filepath: str) -> np.ndarray:
     # Convert to edge index format
     return data.astype(np.int64).transpose()
 
-
 def get_cell_elevation(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray:
     """Get cell elevation - using Centre_ele (center elevation)"""
     columns = "Centre_ele"  # Changed from 'Elevation1'
     data = read_shp_file_as_numpy(filepath=filepath, columns=columns)
     return data.astype(dtype)
 
+def get_min_elevation(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray:
+    """Get min elevation - using min_ele (minimum elevation)"""
+    columns = "min_ele"
+    data = read_shp_file_as_numpy(filepath=filepath, columns=columns)
+    return data.astype(dtype)
 
 def get_edge_length(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray:
     """Get edge length"""
@@ -128,6 +141,30 @@ def get_face_length(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray:
     
     return lengths.astype(dtype)
 
+def get_1d_cell_depth(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray:
+    """Get cell depth - using Depth (depth)"""
+    columns = "Depth"
+    data = read_shp_file_as_numpy(filepath=filepath, columns=columns)
+    return data.astype(dtype)
+
+def get_1d_invert_elevation(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray:
+    """Get invert elevation - using InvertElev (invert elevation)"""
+    columns = "InvertElev"
+    data = read_shp_file_as_numpy(filepath=filepath, columns=columns)
+    return data.astype(dtype)
+
+def get_1d_surface_elevation(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray:
+    """Get surface elevation - using TrrainElev (terain elevation)"""
+    columns = "TrrainElev"
+    data = read_shp_file_as_numpy(filepath=filepath, columns=columns)
+    return data.astype(dtype)
+
+def get_1d_base_area(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray:
+    """Get base area - using BaseArea (base area)"""
+    columns = "BaseArea"
+    data = read_shp_file_as_numpy(filepath=filepath, columns=columns)
+    return data.astype(dtype)
+
 def get_1d_edge_index(filepath: str, nodes_filepath: str) -> np.ndarray:
     """
     Get 1D edge connectivity and map node names to integer indices.
@@ -194,20 +231,23 @@ def get_1d_edge_length(filepath: str, dtype: np.dtype = np.float32) -> np.ndarra
     data = read_shp_file_as_numpy(filepath=filepath, columns=columns)
     return data.astype(dtype)
 
-
-def get_1d_edge_slope(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray:
-    """Get 1D link/conduit slope"""
-    columns = 'Slope'
+def get_1d_edge_shape(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray:
+    """Get 1D link/conduit shape"""
+    SHAPE_TO_INT = {
+        "circular": 0,
+        "rectangular": 1,
+        "elliptical": 2,
+        "arch": 3,
+    }
+    columns = 'Shape'
     data = read_shp_file_as_numpy(filepath=filepath, columns=columns)
-    return data.astype(dtype)
+    data = data.squeeze()  # (N, 1) → (N,)
 
-
-def get_1d_edge_manning(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray:
-    """Get 1D link Manning's n roughness coefficient"""
-    columns = "Manning'sn"
-    data = read_shp_file_as_numpy(filepath=filepath, columns=columns)
-    return data.astype(dtype)
-
+    encoded = np.array(
+        [SHAPE_TO_INT[s.lower()] for s in data],
+        dtype=dtype
+    )
+    return encoded
 
 def get_1d_edge_diameter(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray:
     """
@@ -218,6 +258,70 @@ def get_1d_edge_diameter(filepath: str, dtype: np.dtype = np.float32) -> np.ndar
     columns = 'Span'
     data = read_shp_file_as_numpy(filepath=filepath, columns=columns)
     return data.astype(dtype)
+
+def get_1d_edge_manning(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray:
+    """Get 1D link Manning's n roughness coefficient"""
+    columns = "Manning'sn"
+    data = read_shp_file_as_numpy(filepath=filepath, columns=columns)
+    return data.astype(dtype)
+
+def get_1d_edge_slope(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray:
+    """Get 1D link/conduit slope"""
+    columns = 'Slope'
+    data = read_shp_file_as_numpy(filepath=filepath, columns=columns)
+    return data.astype(dtype)
+
+def get_1d_edge_relative_position(coord: Literal['x', 'y'], nodes_shp_path: str, edges_shp_path: str) -> ndarray:
+    """
+    Get relative position between connected nodes for each edge.
+    
+    Returns:
+        Array of shape (num_edges,) with position[source] - position[target]
+    """
+    # Read nodes to get positions AND create consistent mapping
+    nodes_gdf = gpd.read_file(nodes_shp_path)
+    
+    # Find node name column
+    node_name_col = None
+    for col in ['Name', 'ID', 'NodeName', 'Node_ID', 'node_name']:
+        if col in nodes_gdf.columns:
+            node_name_col = col
+            break
+    
+    if node_name_col is None:
+        raise ValueError(f"Could not find node name column in {nodes_shp_path}")
+    
+    # Get positions directly from the nodes_gdf
+    if coord == 'x':
+        # Assuming nodes have Point geometry
+        positions = nodes_gdf.geometry.x.values
+    else:
+        positions = nodes_gdf.geometry.y.values
+    
+    # Create name-index mapping
+    node_names = nodes_gdf[node_name_col].values
+    name_to_idx = {name: idx for idx, name in enumerate(node_names)}
+    
+    # Get edge connectivity
+    links_gdf = gpd.read_file(edges_shp_path)
+    us_nodes = links_gdf['USNode'].values
+    ds_nodes = links_gdf['DSNode'].values
+    
+    # Calculate relative positions for each edge
+    relative_positions = []
+    
+    for us, ds in zip(us_nodes, ds_nodes):
+        if us in name_to_idx and ds in name_to_idx:
+            us_idx = name_to_idx[us]
+            ds_idx = name_to_idx[ds]
+            rel_pos = positions[us_idx] - positions[ds_idx]
+            relative_positions.append(rel_pos)
+        else:
+            # Handle missing nodes - maybe append NaN or skip
+            print(f"Warning: Edge {us}->{ds} references missing node")
+            relative_positions.append(np.nan)
+    
+    return np.array(relative_positions)
 
 def get_1d2d_edge_index(filepath: str) -> np.ndarray:
     """

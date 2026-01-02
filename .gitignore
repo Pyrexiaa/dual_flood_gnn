@@ -199,8 +199,12 @@ _personal_tests.ipynb
 *.pkl
 *.zip
 
+# Experiment files
+Model2_trained/*
+
 # Shape files
 model1_removed_ghost/*
 model2_removed_ghost/*
 model4_removed_ghost/*
 gru_test_predictions.csv
+gru_test_*

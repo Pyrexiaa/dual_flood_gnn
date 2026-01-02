@@ -287,19 +287,7 @@ def save_predictions(
     device="cuda" if torch.cuda.is_available() else "cpu",
 ):
     """
-    Save model predictions with SEPARATE normalizers for 1D and 2D data.
-
-    Args:
-        model: Trained TwoHeadGRU model
-        dataset: CombinedDataset instance (with 1D and 2D data)
-        normalizer_1d: Normalizer for 1D nodes
-        normalizer_2d: Normalizer for 2D nodes
-        save_path: Path to save CSV file
-        batch_size: Batch size for inference
-        device: 'cuda' or 'cpu'
-
-    Returns:
-        DataFrame with predictions
+    Save model predictions with node_id and timestep information.
     """
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     rows = []
@@ -311,18 +299,34 @@ def save_predictions(
     print(f"  Batch size: {batch_size}")
 
     with torch.no_grad():
-        for batch_idx, (X, y, node_type) in enumerate(loader):
-            X = X.to(device)  # (batch, window, features)
-            y = y.to(device)  # (batch, 1)
-            node_type = node_type.to(device)  # (batch,)
+        for batch_idx, batch_data in enumerate(loader):
+            # Unpack batch - adjust based on your dataset's actual structure
+            if len(batch_data) == 3:
+                X, y, node_type = batch_data
+                node_ids = None
+                timesteps = None
+            elif len(batch_data) == 6:
+                X, y, node_type, node_ids, timesteps, event_ids = batch_data
+            else:
+                # Try to extract from dataset metadata
+                X, y, node_type = batch_data[:3]
+                node_ids = None
+                timesteps = None
 
-            preds = model(X, node_type)  # (batch, 1)
+            X = X.to(device)
+            y = y.to(device)
+            node_type = node_type.to(device)
 
-            # Move back to CPU and convert to numpy
+            preds = model(X, node_type)
+
+            # Move back to CPU
             X_np = X.cpu().numpy()
             y_np = y.cpu().numpy()
             preds_np = preds.cpu().numpy()
             node_type_np = node_type.cpu().numpy()
+            node_ids_np = node_ids.cpu().numpy()
+            timesteps_np = timesteps.cpu().numpy()
+            event_ids_np = event_ids.cpu().numpy()
 
             B, W, F = X_np.shape
 
@@ -330,11 +334,14 @@ def save_predictions(
             for i in range(B):
                 sample_idx = batch_idx * batch_size + i
                 node_type_val = int(node_type_np[i])
+                node_id = int(node_ids_np[i])
+                timestep = int(timesteps_np[i])
+                event_id = int(event_ids_np[i])
 
-                # Select correct normalizer based on node type
+                # Select correct normalizer
                 normalizer = normalizer_1d if node_type_val == 0 else normalizer_2d
 
-                # Inverse transform predictions and targets
+                # Inverse transform
                 if hasattr(normalizer, "inverse_transform_y"):
                     y_original = normalizer.inverse_transform_y(y_np[i : i + 1])[0, 0]
                     pred_original = normalizer.inverse_transform_y(preds_np[i : i + 1])[
@@ -344,12 +351,14 @@ def save_predictions(
                     y_original = normalizer.inverse_y(y_np[i : i + 1])[0, 0]
                     pred_original = normalizer.inverse_y(preds_np[i : i + 1])[0, 0]
                 else:
-                    # No inverse transform available
                     y_original = y_np[i, 0]
                     pred_original = preds_np[i, 0]
 
                 row = {
                     "sample_idx": sample_idx,
+                    "event_id": event_id,
+                    "node_id": node_id,
+                    "timestep": timestep,
                     "node_type": node_type_val,
                     "target_water_level": float(y_original),
                     "predicted_water_level": float(pred_original),
@@ -377,6 +386,7 @@ def save_predictions(
 
     print(f"\n✓ Saved predictions to {save_path}")
     print(f"  Total samples: {len(df)}")
+    print(f"  Unique nodes: {df['node_id'].nunique() if 'node_id' in df else 'N/A'}")
     print(f"  1D samples: {(df['node_type'] == 0).sum()}")
     print(f"  2D samples: {(df['node_type'] == 1).sum()}")
 

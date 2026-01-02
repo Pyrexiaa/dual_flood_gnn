@@ -43,7 +43,7 @@ class JointWaterLevelDataset(Dataset):
         self.separate_static_dynamic = separate_static_dynamic
         self.node_type_filter = node_type_filter
 
-        self.X, self.y, self.y_raw, self.node_type = [], [], [], []
+        self.X, self.y, self.y_raw, self.node_type, self.sample_metadata, self.event_ids = [], [], [], [], [], []
         self.X_static, self.X_dynamic = [], []
         self.samples_after_1d = 0
         self.samples_after_2d = 0
@@ -356,6 +356,8 @@ class JointWaterLevelDataset(Dataset):
             self.y.append(y_out)
             self.y_raw.append(y_out)
             self.node_type.append(node_type)
+            self.sample_metadata.append((node_id, t))
+            self.event_ids.append(event_idx)
 
             # Track which features are actually present
             available_features = [f for f in FEATURE_NAMES if f in df.columns]
@@ -435,7 +437,11 @@ class JointWaterLevelDataset(Dataset):
                 self.y[idx],
                 self.node_type[idx],
             )
-        return self.X[idx], self.y[idx], self.node_type[idx]
+        
+        node_type = self.node_type[idx]
+        node_id, timestep = self.sample_metadata[idx]
+
+        return self.X[idx], self.y[idx], node_type, node_id, timestep, self.event_ids[idx]
 
     def get_feature_names(self):
         """Return the list of features used in this dataset."""
@@ -472,17 +478,11 @@ class JointWaterLevelDataset(Dataset):
 class WaterLevelDataset1D(Dataset):
     """
     Dataset for 1D nodes only - simplified for node-level features.
-    
-    Since we're using node-level features only, 1D nodes will have:
-    - 1d_position_x, 1d_position_y (static)
-    - inlet_flow (dynamic)
-    All other features will be padded with zeros.
     """
 
     def __init__(
         self, event_dirs, window, normalizer=None, fit_normalizer=False, **kwargs
     ):
-        # Filter to only include 1D node types during processing
         kwargs["node_type_filter"] = [0]  # Only 1D nodes
 
         self.dataset = JointWaterLevelDataset(
@@ -493,25 +493,18 @@ class WaterLevelDataset1D(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        X, y, node_type = self.dataset[idx]
-        return X, y  # Don't need node_type since all are 1D
+        X, y, node_type, node_id, timestep, event_id = self.dataset[idx]
+        return X, y, node_id, timestep, event_id  # Return metadata
 
 
 class WaterLevelDataset2D(Dataset):
     """
     Dataset for 2D nodes only - simplified for node-level features.
-    
-    Since we're using node-level features only, 2D nodes will have:
-    - 2d_position_x, 2d_position_y, area, roughness, elevation, 
-      aspect, curvature, flow_accumulation, slope (static)
-    - rainfall, water_volume (dynamic)
-    1D features will be padded with zeros.
     """
 
     def __init__(
         self, event_dirs, window, normalizer=None, fit_normalizer=False, **kwargs
     ):
-        # Filter to only include 2D node types during processing
         kwargs["node_type_filter"] = [1]  # Only 2D nodes
 
         self.dataset = JointWaterLevelDataset(
@@ -522,16 +515,13 @@ class WaterLevelDataset2D(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        X, y, node_type = self.dataset[idx]
-        return X, y
+        X, y, node_type, node_id, timestep, event_id = self.dataset[idx]  # NEW: Unpack metadata
+        return X, y, node_id, timestep, event_id  # Return metadata
 
 
 class CombinedDataset(Dataset):
     """
     Combines 1D and 2D datasets with consistent feature dimensions.
-    
-    Since both datasets already use the same FEATURE_NAMES list with padding,
-    they should already have the same dimensions. This class just concatenates them.
     """
     
     def __init__(self, dataset_1d, dataset_2d):
@@ -557,10 +547,10 @@ class CombinedDataset(Dataset):
     def __getitem__(self, idx):
         if idx < len(self.dataset_1d):
             # 1D sample
-            X, y = self.dataset_1d[idx]
-            return X, y, torch.tensor(0)  # node_type=0
+            X, y, node_id, timestep, event_id = self.dataset_1d[idx]  # NEW: Unpack metadata
+            return X, y, torch.tensor(0), node_id, timestep, event_id  # node_type=0
         else:
             # 2D sample
             idx_2d = idx - len(self.dataset_1d)
-            X, y = self.dataset_2d[idx_2d]
-            return X, y, torch.tensor(1)  # node_type=1
+            X, y, node_id, timestep, event_id = self.dataset_2d[idx_2d]  # NEW: Unpack metadata
+            return X, y, torch.tensor(1), node_id, timestep, event_id  # node_type=1

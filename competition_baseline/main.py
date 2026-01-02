@@ -1,7 +1,7 @@
 from constants import FEATURE_NAMES
 from debug import full_debug_workflow
 from save import save_predictions
-from utils import evaluate_predictions, NSE
+from utils import nse, evaluate_predictions_hierarchical
 from scaler import SequenceNormalizer
 from model import TwoHeadGRU
 from dataset import CombinedDataset, WaterLevelDataset1D, WaterLevelDataset2D
@@ -10,6 +10,9 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 import joblib
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
 
 
 def create_filtered_datasets(
@@ -315,7 +318,7 @@ def train(
         train_preds_2d = []
         train_targets_2d = []
 
-        for batch_idx, (X, y, node_type) in enumerate(train_loader):
+        for batch_idx, (X, y, node_type, node_ids, timesteps) in enumerate(train_loader):
             X = X.to(device)  # (batch, window, features)
             y = y.to(device)  # (batch, 1)
             node_type = node_type.to(device)  # (batch,)
@@ -372,19 +375,19 @@ def train(
         # Compute training NSE
         train_preds_all = torch.cat(train_preds_all, dim=0)
         train_targets_all = torch.cat(train_targets_all, dim=0)
-        train_nse = NSE(train_preds_all, train_targets_all).item()
+        train_nse = nse(train_preds_all, train_targets_all).item()
 
         train_nse_1d = 0.0
         if len(train_preds_1d) > 0:
             train_preds_1d = torch.cat(train_preds_1d, dim=0)
             train_targets_1d = torch.cat(train_targets_1d, dim=0)
-            train_nse_1d = NSE(train_preds_1d, train_targets_1d).item()
+            train_nse_1d = nse(train_preds_1d, train_targets_1d).item()
 
         train_nse_2d = 0.0
         if len(train_preds_2d) > 0:
             train_preds_2d = torch.cat(train_preds_2d, dim=0)
             train_targets_2d = torch.cat(train_targets_2d, dim=0)
-            train_nse_2d = NSE(train_preds_2d, train_targets_2d).item()
+            train_nse_2d = nse(train_preds_2d, train_targets_2d).item()
 
         train_nse_modified = (
             (train_nse_1d + train_nse_2d) / 2
@@ -416,7 +419,7 @@ def train(
         val_targets_2d = []
 
         with torch.no_grad():
-            for X, y, node_type in test_loader:
+            for X, y, node_type, node_ids, timesteps in test_loader:
                 X = X.to(device)
                 y = y.to(device)
                 node_type = node_type.to(device)
@@ -462,19 +465,19 @@ def train(
         # Compute validation NSE
         val_preds_all = torch.cat(val_preds_all, dim=0)
         val_targets_all = torch.cat(val_targets_all, dim=0)
-        val_nse = NSE(val_preds_all, val_targets_all).item()
+        val_nse = nse(val_preds_all, val_targets_all).item()
 
         val_nse_1d = 0.0
         if len(val_preds_1d) > 0:
             val_preds_1d = torch.cat(val_preds_1d, dim=0)
             val_targets_1d = torch.cat(val_targets_1d, dim=0)
-            val_nse_1d = NSE(val_preds_1d, val_targets_1d).item()
+            val_nse_1d = nse(val_preds_1d, val_targets_1d).item()
 
         val_nse_2d = 0.0
         if len(val_preds_2d) > 0:
             val_preds_2d = torch.cat(val_preds_2d, dim=0)
             val_targets_2d = torch.cat(val_targets_2d, dim=0)
-            val_nse_2d = NSE(val_preds_2d, val_targets_2d).item()
+            val_nse_2d = nse(val_preds_2d, val_targets_2d).item()
 
         val_nse_modified = (
             (val_nse_1d + val_nse_2d) / 2
@@ -724,10 +727,12 @@ def load_model_and_predict(
     print(f"   - Model expects: {input_dim}")
 
     # Add assertion to catch mismatch
-    assert test_1d.dataset.X.shape[-1] == input_dim, \
+    assert test_1d.dataset.X.shape[-1] == input_dim, (
         f"1D feature mismatch! Dataset has {test_1d.dataset.X.shape[-1]}, model expects {input_dim}"
-    assert test_2d.dataset.X.shape[-1] == input_dim, \
+    )
+    assert test_2d.dataset.X.shape[-1] == input_dim, (
         f"2D feature mismatch! Dataset has {test_2d.dataset.X.shape[-1]}, model expects {input_dim}"
+    )
 
     # Combine datasets
     test_combined = CombinedDataset(test_1d, test_2d)
@@ -754,14 +759,13 @@ def load_model_and_predict(
     # 6. EVALUATE
     # =====================
     print("\n6. Evaluating predictions...")
-    metrics = evaluate_predictions(save_path)
+    metrics = evaluate_predictions_hierarchical(save_path)
 
     print("\n" + "=" * 80)
     print("COMPLETE")
     print("=" * 80)
 
     return pred_df, metrics
-
 
 if __name__ == "__main__":
     model_name = "Model1"
@@ -797,7 +801,7 @@ if __name__ == "__main__":
             debug_trained_normalizer_2d,
         )
 
-    train_bool = True
+    train_bool = False
     if train_bool:
         new_normalizer_1d = SequenceNormalizer()
         new_normalizer_2d = SequenceNormalizer()
@@ -829,9 +833,9 @@ if __name__ == "__main__":
         )
 
         # Evaluate
-        metrics = evaluate_predictions(test_save_path)
+        metrics = evaluate_predictions_hierarchical(test_save_path)
 
-    test_only = False
+    test_only = True
     if test_only:
         load_model_and_predict(
             max_events=None,
@@ -840,5 +844,5 @@ if __name__ == "__main__":
             normalizer_1d_path="train_normalizer_two_head_1d.pkl",
             normalizer_2d_path="train_normalizer_two_head_2d.pkl",
             device="cuda" if torch.cuda.is_available() else "cpu",
-            save_path="gru_test_predictions.csv",
+            save_path="gru_test_predictions_test.csv",
         )
