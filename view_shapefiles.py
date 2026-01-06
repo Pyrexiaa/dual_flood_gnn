@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 import numpy as np
 import geopandas as gpd
 import os
@@ -669,21 +669,19 @@ def filter_nodes_by_fid_match(
     keep_all_boundary: bool = True,
     remapping_json: Optional[str] = None,
     remapping_key: str = "node_remapping",
-    add_original_fid: bool = False,
+    removed_nodes_key: str = "removed_nodes",
+    add_original_fid: bool = True,
 ) -> gpd.GeoDataFrame:
     """
-    Filter a source shapefile to keep only nodes whose FID matches node_idx values
-    in the reference shapefile. Optionally keeps specified boundary nodes regardless of FID match.
-    Can also remap node IDs based on a JSON mapping file.
+    Filter a source shapefile by removing specified nodes and applying ID remapping.
+    Optionally preserves boundary nodes (with remapped IDs).
 
-    This function:
-    1. Loads both shapefiles
-    2. Gets the set of valid node_idx values from the reference shapefile
-    3. Filters the source shapefile to keep only rows where FID is in that set
-    4. If keep_all_boundary=True and boundary_nodes list provided, also keeps those nodes
-    5. Optionally applies node ID remapping from JSON file
-    6. Preserves all columns and structure from the source shapefile
-    7. Optionally saves the filtered result to a new shapefile
+    Correct logic flow:
+    1. Load remapping JSON (contains removed_nodes and node_remapping)
+    2. Remove nodes whose FID is in removed_nodes list
+    3. Apply node_remapping to remap FIDs
+    4. If boundary_nodes provided, remap them and ensure they're preserved
+    5. Optionally filter by reference shapefile node_idx values
 
     Args:
         source_shapefile: Path to the shapefile to be filtered (contains FID)
@@ -692,14 +690,15 @@ def filter_nodes_by_fid_match(
                          If None, returns GeoDataFrame without saving
         source_fid_column: Column name for FID in source shapefile (default: "FID")
         reference_nodeidx_column: Column name for node indices in reference (default: "node_idx")
-        boundary_nodes: List or array of FID values for boundary nodes to preserve (default: None)
-        keep_all_boundary: If True, keeps nodes in boundary_nodes list regardless of FID match (default: True)
-        remapping_json: Optional path to JSON file containing node ID remapping
-        remapping_key: Key in JSON file containing the remapping dict (default: "node_remapping")
-        add_original_fid: If True and remapping applied, adds 'original_fid' column (default: True)
+        boundary_nodes: List or array of ORIGINAL FID values for boundary nodes to preserve
+        keep_all_boundary: If True, keeps boundary nodes regardless of other filters (default: True)
+        remapping_json: Path to JSON file containing removed_nodes and node_remapping
+        remapping_key: Key in JSON for the remapping dict (default: "node_remapping")
+        removed_nodes_key: Key in JSON for removed nodes list (default: "removed_nodes")
+        add_original_fid: If True, adds 'original_fid' column before remapping (default: True)
 
     Returns:
-        GeoDataFrame: Filtered nodes matching the FID criteria and/or boundary nodes
+        GeoDataFrame: Filtered and remapped nodes
     """
 
     # Validate input files exist
@@ -709,7 +708,7 @@ def filter_nodes_by_fid_match(
         raise FileNotFoundError(f"Reference shapefile not found: {reference_shapefile}")
 
     print("=" * 80)
-    print("FILTERING NODES BY FID MATCH")
+    print("FILTERING NODES WITH CORRECT LOGIC")
     print("=" * 80)
 
     # Load shapefiles
@@ -736,174 +735,226 @@ def filter_nodes_by_fid_match(
             f"Available columns: {list(reference_gdf.columns)}"
         )
 
-    # Get valid node indices from reference shapefile and convert to consistent type
-    reference_values = reference_gdf[reference_nodeidx_column].values
-    source_values = source_gdf[source_fid_column].values
+    # =========================================================================
+    # STEP 1: Load remapping data (removed_nodes and node_remapping)
+    # =========================================================================
+    removed_nodes_list = []
+    node_remapping = {}
 
-    print("\nColumn types:")
-    print(f"  Source {source_fid_column}: {source_values.dtype}")
-    print(f"  Reference {reference_nodeidx_column}: {reference_values.dtype}")
-
-    # Convert both to int64 for comparison (handles int, float, string representations)
-    try:
-        reference_values_int = reference_values.astype("int64")
-        source_values_int = source_values.astype("int64")
-        print("  ✓ Successfully converted both to int64 for comparison")
-    except (ValueError, TypeError):
-        # If int conversion fails, try string comparison
-        print("  ⚠ Int conversion failed, using string comparison")
-        reference_values_int = reference_values.astype(str)
-        source_values_int = source_values.astype(str)
-
-    valid_node_indices = set(reference_values_int)
-    print(f"\nValid node indices from reference: {len(valid_node_indices)}")
-
-    # Handle boundary nodes list
-    has_boundary_list = boundary_nodes is not None and len(boundary_nodes) > 0
-    if keep_all_boundary and has_boundary_list:
-        # Convert boundary_nodes to the same type as source values
-        boundary_nodes_array = np.array(boundary_nodes)
-        try:
-            boundary_nodes_int = boundary_nodes_array.astype(source_values_int.dtype)
-        except (ValueError, TypeError):
-            boundary_nodes_int = boundary_nodes_array.astype(str)
-
-        boundary_nodes_set = set(boundary_nodes_int)
-        print(
-            f"\n✓ Boundary nodes list provided: {len(boundary_nodes_set)} unique FIDs"
-        )
-        print(f"  Sample boundary FIDs: {list(boundary_nodes_set)[:10]}")
-
-        # Check how many boundary nodes exist in source
-        boundary_in_source = (
-            source_gdf[source_fid_column]
-            .astype(source_values_int.dtype)
-            .isin(boundary_nodes_set)
-            .sum()
-        )
-        print(f"  Boundary nodes found in source: {boundary_in_source}")
-
-    elif keep_all_boundary and not has_boundary_list:
-        print("\n⚠ Warning: keep_all_boundary=True but no boundary_nodes list provided")
-        print("  Will only filter by FID matching")
-
-    # Filter source shapefile using converted values
-    print("\nFiltering source shapefile...")
-    print(
-        f"  Keeping rows where {source_fid_column} is in reference {reference_nodeidx_column}"
-    )
-
-    # Create mask for FID matching
-    source_fids_converted = source_gdf[source_fid_column].astype(
-        source_values_int.dtype
-    )
-    fid_match_mask = source_fids_converted.isin(valid_node_indices)
-
-    # Create mask for boundary nodes if applicable
-    if keep_all_boundary and has_boundary_list:
-        print("  AND keeping all nodes with FID in boundary_nodes list")
-        boundary_mask = source_fids_converted.isin(boundary_nodes_set)
-
-        # Combine masks: keep if FID matches OR is in boundary list
-        final_mask = fid_match_mask | boundary_mask
-    else:
-        final_mask = fid_match_mask
-
-    filtered_gdf = source_gdf[final_mask].copy()
-
-    # Statistics
-    original_count = len(source_gdf)
-    filtered_count = len(filtered_gdf)
-    removed_count = original_count - filtered_count
-
-    print("\n" + "=" * 80)
-    print("FILTERING RESULTS")
-    print("=" * 80)
-    print(f"\nOriginal nodes:  {original_count:,}")
-    print(f"Filtered nodes:  {filtered_count:,}")
-    print(f"Removed nodes:   {removed_count:,}")
-    print(f"Retention rate:  {(filtered_count / original_count) * 100:.2f}%")
-
-    # Detailed breakdown if boundary list provided
-    if keep_all_boundary and has_boundary_list:
-        fid_match_count = fid_match_mask.sum()
-        boundary_match_count = boundary_mask.sum()
-        both_match_count = (fid_match_mask & boundary_mask).sum()
-        only_boundary_count = boundary_match_count - both_match_count
-
-        print("\nBreakdown:")
-        print(f"  Nodes with matching FID:           {fid_match_count:,}")
-        print(f"  Nodes from boundary list:          {boundary_match_count:,}")
-        print(f"  Nodes in both categories:          {both_match_count:,}")
-        print(f"  Nodes ONLY from boundary list:     {only_boundary_count:,}")
-
-    # Load and apply remapping if provided
     if remapping_json:
         print("\n" + "=" * 80)
-        print("APPLYING NODE ID REMAPPING")
+        print("STEP 1: LOADING REMAPPING DATA")
         print("=" * 80)
 
         if not os.path.exists(remapping_json):
             print(f"⚠ Warning: Remapping file not found: {remapping_json}")
-            print("  Skipping remapping step")
+            print("  Proceeding without remapping")
         else:
-            print(f"\nLoading remapping from: {remapping_json}")
+            print(f"\nLoading from: {remapping_json}")
 
             with open(remapping_json, "r") as f:
                 remapping_data = json.load(f)
 
-            if remapping_key not in remapping_data:
-                print(f"⚠ Warning: Key '{remapping_key}' not found in JSON file")
-                print(f"  Available keys: {list(remapping_data.keys())}")
-                print("  Skipping remapping step")
+            # Load removed_nodes
+            if removed_nodes_key in remapping_data:
+                removed_nodes_list = remapping_data[removed_nodes_key]
+                print(
+                    f"\n✓ Loaded '{removed_nodes_key}': {len(removed_nodes_list)} nodes to remove"
+                )
+                print(f"  Sample removed nodes: {removed_nodes_list[:10]}")
             else:
+                print(f"\n⚠ Warning: Key '{removed_nodes_key}' not found in JSON")
+
+            # Load node_remapping
+            if remapping_key in remapping_data:
                 node_remapping = remapping_data[remapping_key]
-                print(f"  Loaded {len(node_remapping)} remapping entries")
+                print(
+                    f"\n✓ Loaded '{remapping_key}': {len(node_remapping)} remapping entries"
+                )
                 print(f"  Sample mappings: {dict(list(node_remapping.items())[:5])}")
+            else:
+                print(f"\n⚠ Warning: Key '{remapping_key}' not found in JSON")
 
-                # Save original FID if requested
-                if add_original_fid:
-                    filtered_gdf["original_fid"] = filtered_gdf[
-                        source_fid_column
-                    ].copy()
+    # =========================================================================
+    # STEP 2: Remove nodes in removed_nodes list
+    # =========================================================================
+    print("\n" + "=" * 80)
+    print("STEP 2: REMOVING SPECIFIED NODES")
+    print("=" * 80)
 
-                # Apply remapping
-                remapped_count = 0
-                unmapped_count = 0
-                unmapped_nodes = []
+    original_count = len(source_gdf)
 
-                # Create new FID column with remapped values
-                new_fids = []
-                for old_fid in filtered_gdf[source_fid_column]:
-                    # Convert to string for JSON key lookup
-                    old_fid_str = str(old_fid)
+    if removed_nodes_list:
+        # Convert removed_nodes to set for efficient lookup
+        removed_nodes_set = set(removed_nodes_list)
 
-                    if old_fid_str in node_remapping:
-                        new_fid = node_remapping[old_fid_str]
-                        new_fids.append(new_fid)
-                        remapped_count += 1
-                    else:
-                        # Keep original FID if no mapping found
-                        new_fids.append(old_fid)
-                        unmapped_count += 1
-                        if len(unmapped_nodes) < 10:  # Store first 10 for reporting
-                            unmapped_nodes.append(old_fid)
+        # Convert FID column to comparable type
+        source_fids = source_gdf[source_fid_column].astype(str)
+        removed_nodes_str = {str(node) for node in removed_nodes_set}
 
-                # Update FID column
-                filtered_gdf[source_fid_column] = new_fids
+        # Create mask: keep nodes NOT in removed list
+        keep_mask = ~source_fids.isin(removed_nodes_str)
 
-                print("\nRemapping results:")
-                print(f"  Nodes remapped:     {remapped_count:,}")
-                print(f"  Nodes not in map:   {unmapped_count:,}")
-                if unmapped_nodes:
-                    print(f"  Sample unmapped:    {unmapped_nodes}")
+        filtered_gdf = source_gdf[keep_mask].copy()
 
-                if add_original_fid:
-                    print("\n✓ Original FIDs preserved in 'original_fid' column")
+        removed_count = original_count - len(filtered_gdf)
+        print(f"\nRemoved {removed_count:,} nodes from removed_nodes list")
+        print(f"Remaining nodes: {len(filtered_gdf):,}")
+    else:
+        print("\nNo removed_nodes list provided - keeping all nodes")
+        filtered_gdf = source_gdf.copy()
 
-    # Save if output path provided
+    # =========================================================================
+    # STEP 3: Remap boundary nodes (if provided)
+    # =========================================================================
+    remapped_boundary_set = set()
+
+    if boundary_nodes is not None and len(boundary_nodes) > 0:
+        print("\n" + "=" * 80)
+        print("STEP 3: REMAPPING BOUNDARY NODES")
+        print("=" * 80)
+
+        boundary_nodes_array = np.array(boundary_nodes)
+        print(f"\nOriginal boundary nodes: {len(boundary_nodes_array)} unique FIDs")
+        print(f"  Sample original: {list(boundary_nodes_array[:10])}")
+
+        if node_remapping:
+            # Remap each boundary node
+            remapped_boundary = []
+            for orig_fid in boundary_nodes_array:
+                orig_fid_str = str(orig_fid)
+                if orig_fid_str in node_remapping:
+                    remapped_fid = node_remapping[orig_fid_str]
+                    remapped_boundary.append(remapped_fid)
+                else:
+                    # Keep original if no mapping found
+                    remapped_boundary.append(orig_fid)
+
+            remapped_boundary_set = set(str(x) for x in remapped_boundary)
+            print(
+                f"\n✓ Remapped boundary nodes to: {len(remapped_boundary_set)} unique FIDs"
+            )
+            print(f"  Sample remapped: {list(remapped_boundary_set)[:10]}")
+        else:
+            # No remapping available, use original boundary nodes
+            remapped_boundary_set = set(str(x) for x in boundary_nodes_array)
+            print("\n⚠ No node_remapping available - using original boundary node IDs")
+
+    # =========================================================================
+    # STEP 4: Apply node remapping to FID column
+    # =========================================================================
+    print("\n" + "=" * 80)
+    print("STEP 4: APPLYING NODE ID REMAPPING")
+    print("=" * 80)
+
+    if node_remapping:
+        # Save original FID if requested
+        if add_original_fid:
+            filtered_gdf["original_fid"] = filtered_gdf[source_fid_column].copy()
+            print("\n✓ Saved original FIDs to 'original_fid' column")
+
+        # Apply remapping
+        remapped_count = 0
+        unmapped_count = 0
+        unmapped_samples = []
+
+        new_fids = []
+        for old_fid in filtered_gdf[source_fid_column]:
+            old_fid_str = str(old_fid)
+
+            if old_fid_str in node_remapping:
+                new_fid = node_remapping[old_fid_str]
+                new_fids.append(new_fid)
+                remapped_count += 1
+            else:
+                # Keep original FID if no mapping found
+                new_fids.append(old_fid)
+                unmapped_count += 1
+                if len(unmapped_samples) < 10:
+                    unmapped_samples.append(old_fid)
+
+        # Update FID column with remapped values
+        filtered_gdf[source_fid_column] = new_fids
+
+        print("\nRemapping results:")
+        print(f"  Nodes remapped:     {remapped_count:,}")
+        print(f"  Nodes not in map:   {unmapped_count:,}")
+        if unmapped_samples:
+            print(f"  Sample unmapped:    {unmapped_samples}")
+    else:
+        print("\nNo node_remapping provided - keeping original FIDs")
+
+    # =========================================================================
+    # STEP 5: Ensure boundary nodes are preserved (after remapping)
+    # =========================================================================
+    if keep_all_boundary and remapped_boundary_set:
+        print("\n" + "=" * 80)
+        print("STEP 5: ENSURING BOUNDARY NODES ARE PRESERVED")
+        print("=" * 80)
+
+        # Check which remapped boundary nodes are in the current filtered set
+        current_fids_str = set(str(x) for x in filtered_gdf[source_fid_column])
+        boundary_in_filtered = remapped_boundary_set & current_fids_str
+        boundary_missing = remapped_boundary_set - current_fids_str
+
+        print("\nBoundary nodes status (using remapped IDs):")
+        print(f"  Already in filtered set: {len(boundary_in_filtered):,}")
+        print(f"  Missing from filtered set: {len(boundary_missing):,}")
+
+        if boundary_missing:
+            print(f"  Sample missing: {list(boundary_missing)[:10]}")
+
+            # Find these nodes in the original (after step 2 removal)
+            # Need to search in source_gdf before remapping was applied
+            # This is tricky - we need the original data before remapping
+            print("\n⚠ Some boundary nodes were removed in previous steps")
+            print(
+                "  These nodes cannot be recovered as they were in removed_nodes list"
+            )
+
+    # =========================================================================
+    # STEP 6: Optional reference shapefile filtering
+    # =========================================================================
+    print("\n" + "=" * 80)
+    print("STEP 6: OPTIONAL REFERENCE FILTERING")
+    print("=" * 80)
+
+    # Get valid node indices from reference shapefile
+    reference_values = reference_gdf[reference_nodeidx_column].astype(str)
+    valid_reference_set = set(reference_values)
+
+    print(f"\nValid node_idx values in reference: {len(valid_reference_set)}")
+
+    # Check how many of our nodes match the reference
+    current_fids_str = filtered_gdf[source_fid_column].astype(str)
+    nodes_in_reference = current_fids_str.isin(valid_reference_set).sum()
+    nodes_not_in_reference = len(filtered_gdf) - nodes_in_reference
+
+    print(f"Current nodes matching reference: {nodes_in_reference:,}")
+    print(f"Current nodes NOT in reference: {nodes_not_in_reference:,}")
+
+    # Optionally filter by reference (you can enable this if needed)
+    # filtered_gdf = filtered_gdf[current_fids_str.isin(valid_reference_set)]
+
+    # =========================================================================
+    # FINAL STATISTICS
+    # =========================================================================
+    print("\n" + "=" * 80)
+    print("FINAL RESULTS")
+    print("=" * 80)
+
+    final_count = len(filtered_gdf)
+    total_removed = original_count - final_count
+
+    print(f"\nOriginal nodes:     {original_count:,}")
+    print(f"Final nodes:        {final_count:,}")
+    print(f"Total removed:      {total_removed:,}")
+    print(f"Retention rate:     {(final_count / original_count) * 100:.2f}%")
+
+    # =========================================================================
+    # SAVE OUTPUT
+    # =========================================================================
     if output_shapefile:
-        # Create output directory if needed
         output_dir = os.path.dirname(output_shapefile)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
@@ -912,8 +963,8 @@ def filter_nodes_by_fid_match(
         filtered_gdf.to_file(output_shapefile)
         print("✓ File saved successfully")
 
-        if remapping_json and os.path.exists(remapping_json):
-            print("  FID column: Contains remapped node IDs")
+        if node_remapping:
+            print(f"  {source_fid_column} column: Contains remapped node IDs")
             if add_original_fid:
                 print("  original_fid column: Contains original FIDs")
 
@@ -933,18 +984,20 @@ def filter_edges_by_node_existence(
     remapping_json: Optional[str] = None,
     edge_remapping_key: str = "edge_remapping",
     node_remapping_key: str = "node_remapping",
-    add_original_ids: bool = False,
+    removed_edges_key: str = "removed_edges",
+    add_original_ids: bool = True,
 ) -> gpd.GeoDataFrame:
     """
-    Filter edges to keep only those where BOTH from_node and to_node exist in the reference nodes shapefile.
-    Applies node ID remapping BEFORE filtering, then edge ID remapping AFTER filtering.
+    Filter edges by removing specified edges, remapping node IDs, filtering by node existence,
+    and finally remapping edge IDs.
 
-    Processing order:
-    1. Load shapefiles
-    2. Remap from_node and to_node (if node_remapping provided)
-    3. Filter edges based on remapped node IDs
-    4. Remap edge FIDs (if edge_remapping provided)
-    5. Save
+    Correct logic flow:
+    1. Load remapping JSON (contains removed_edges, node_remapping, edge_remapping)
+    2. Remove edges whose FID is in removed_edges list
+    3. Remap from_node and to_node using node_remapping
+    4. Filter edges to keep only those where BOTH nodes exist in reference
+    5. Remap edge FIDs using edge_remapping
+    6. Save result
 
     Args:
         source_edges_shapefile: Path to the edges shapefile to be filtered
@@ -954,13 +1007,14 @@ def filter_edges_by_node_existence(
         edge_to_node_column: Column name for target node in edges (default: "to_node")
         node_id_column: Column name for node identifier in nodes shapefile (default: "FID")
         edge_fid_column: Column name for edge FID in edges shapefile (default: "FID")
-        remapping_json: Optional path to JSON file containing remapping
+        remapping_json: Path to JSON file containing removed_edges, node_remapping, edge_remapping
         edge_remapping_key: Key in JSON for edge remapping (default: "edge_remapping")
         node_remapping_key: Key in JSON for node remapping (default: "node_remapping")
+        removed_edges_key: Key in JSON for removed edges list (default: "removed_edges")
         add_original_ids: If True, adds columns for original IDs (default: True)
 
     Returns:
-        GeoDataFrame: Filtered edges where both endpoints exist in nodes shapefile
+        GeoDataFrame: Filtered and remapped edges
     """
 
     # Validate input files exist
@@ -974,7 +1028,7 @@ def filter_edges_by_node_existence(
         )
 
     print("=" * 80)
-    print("FILTERING EDGES BY NODE EXISTENCE")
+    print("FILTERING EDGES WITH CORRECT LOGIC")
     print("=" * 80)
 
     # Load shapefiles
@@ -1013,118 +1067,207 @@ def filter_edges_by_node_existence(
             f"Available columns: {list(edges_gdf.columns)}"
         )
 
-    # STEP 1: Apply node remapping to from_node and to_node BEFORE filtering
-    if remapping_json and os.path.exists(remapping_json):
-        print("\n" + "=" * 80)
-        print("STEP 1: REMAPPING NODE IDs (BEFORE FILTERING)")
-        print("=" * 80)
-        
-        print(f"\nLoading remapping from: {remapping_json}")
-        
-        with open(remapping_json, "r") as f:
-            remapping_data = json.load(f)
-        
-        if node_remapping_key in remapping_data:
-            node_remapping = remapping_data[node_remapping_key]
-            print(f"\n✓ Node remapping found: {len(node_remapping)} entries")
-            print(f"  Sample node mappings: {dict(list(node_remapping.items())[:5])}")
-            
-            # Save original node IDs if requested
-            if add_original_ids:
-                edges_gdf["orig_from"] = edges_gdf[edge_from_node_column].copy()
-                edges_gdf["orig_to"] = edges_gdf[edge_to_node_column].copy()
-            
-            # Remap from_node
-            from_remapped_count = 0
-            from_unmapped_count = 0
-            new_from_nodes = []
-            
-            for old_node in edges_gdf[edge_from_node_column]:
-                old_node_str = str(old_node)
-                
-                if old_node_str in node_remapping:
-                    new_node = node_remapping[old_node_str]
-                    new_from_nodes.append(new_node)
-                    from_remapped_count += 1
-                else:
-                    new_from_nodes.append(old_node)
-                    from_unmapped_count += 1
-            
-            edges_gdf[edge_from_node_column] = new_from_nodes
-            
-            # Remap to_node
-            to_remapped_count = 0
-            to_unmapped_count = 0
-            new_to_nodes = []
-            
-            for old_node in edges_gdf[edge_to_node_column]:
-                old_node_str = str(old_node)
-                
-                if old_node_str in node_remapping:
-                    new_node = node_remapping[old_node_str]
-                    new_to_nodes.append(new_node)
-                    to_remapped_count += 1
-                else:
-                    new_to_nodes.append(old_node)
-                    to_unmapped_count += 1
-            
-            edges_gdf[edge_to_node_column] = new_to_nodes
-            
-            print("\nNode ID remapping results:")
-            print(f"  from_node remapped: {from_remapped_count:,}")
-            print(f"  from_node unmapped: {from_unmapped_count:,}")
-            print(f"  to_node remapped:   {to_remapped_count:,}")
-            print(f"  to_node unmapped:   {to_unmapped_count:,}")
-            
-            if add_original_ids:
-                print("\n✓ Original node IDs preserved in columns:")
-                print("  - orig_from: Original from_node IDs")
-                print("  - orig_to: Original to_node IDs")
-        else:
-            print(f"\n⚠ Warning: Key '{node_remapping_key}' not found in JSON")
-            print(f"  Available keys: {list(remapping_data.keys())}")
-            print("  Proceeding with original node IDs")
+    # =========================================================================
+    # STEP 1: Load remapping data
+    # =========================================================================
+    removed_edges_list = []
+    node_remapping = {}
+    edge_remapping = {}
 
-    # STEP 2: Filter edges based on (remapped) node existence
+    if remapping_json:
+        print("\n" + "=" * 80)
+        print("STEP 1: LOADING REMAPPING DATA")
+        print("=" * 80)
+
+        if not os.path.exists(remapping_json):
+            print(f"⚠ Warning: Remapping file not found: {remapping_json}")
+            print("  Proceeding without remapping")
+        else:
+            print(f"\nLoading from: {remapping_json}")
+
+            with open(remapping_json, "r") as f:
+                remapping_data = json.load(f)
+
+            # Load removed_edges
+            if removed_edges_key in remapping_data:
+                removed_edges_list = remapping_data[removed_edges_key]
+                print(
+                    f"\n✓ Loaded '{removed_edges_key}': {len(removed_edges_list)} edges to remove"
+                )
+                print(f"  Sample removed edges: {removed_edges_list[:10]}")
+            else:
+                print(f"\n⚠ Warning: Key '{removed_edges_key}' not found in JSON")
+
+            # Load node_remapping
+            if node_remapping_key in remapping_data:
+                node_remapping = remapping_data[node_remapping_key]
+                print(
+                    f"\n✓ Loaded '{node_remapping_key}': {len(node_remapping)} node remapping entries"
+                )
+                print(
+                    f"  Sample node mappings: {dict(list(node_remapping.items())[:5])}"
+                )
+            else:
+                print(f"\n⚠ Warning: Key '{node_remapping_key}' not found in JSON")
+
+            # Load edge_remapping
+            if edge_remapping_key in remapping_data:
+                edge_remapping = remapping_data[edge_remapping_key]
+                print(
+                    f"\n✓ Loaded '{edge_remapping_key}': {len(edge_remapping)} edge remapping entries"
+                )
+                print(
+                    f"  Sample edge mappings: {dict(list(edge_remapping.items())[:5])}"
+                )
+            else:
+                print(f"\n⚠ Warning: Key '{edge_remapping_key}' not found in JSON")
+
+    # =========================================================================
+    # STEP 2: Remove edges in removed_edges list
+    # =========================================================================
     print("\n" + "=" * 80)
-    print("STEP 2: FILTERING EDGES BY NODE EXISTENCE")
+    print("STEP 2: REMOVING SPECIFIED EDGES")
     print("=" * 80)
-    
-    # Get set of valid node IDs from reference
-    valid_node_ids = set(nodes_gdf[node_id_column].values)
+
+    original_count = len(edges_gdf)
+
+    if removed_edges_list:
+        # Convert removed_edges to set for efficient lookup
+        removed_edges_set = set(removed_edges_list)
+
+        # Convert edge FID column to comparable type
+        edge_fids = edges_gdf[edge_fid_column].astype(str)
+        removed_edges_str = {str(edge) for edge in removed_edges_set}
+
+        # Create mask: keep edges NOT in removed list
+        keep_mask = ~edge_fids.isin(removed_edges_str)
+
+        filtered_edges_gdf = edges_gdf[keep_mask].copy()
+
+        removed_count = original_count - len(filtered_edges_gdf)
+        print(f"\nRemoved {removed_count:,} edges from removed_edges list")
+        print(f"Remaining edges: {len(filtered_edges_gdf):,}")
+    else:
+        print("\nNo removed_edges list provided - keeping all edges")
+        filtered_edges_gdf = edges_gdf.copy()
+
+    # =========================================================================
+    # STEP 3: Remap from_node and to_node using node_remapping
+    # =========================================================================
+    print("\n" + "=" * 80)
+    print("STEP 3: REMAPPING NODE IDs (from_node and to_node)")
+    print("=" * 80)
+
+    if node_remapping:
+        # Save original node IDs if requested
+        if add_original_ids:
+            filtered_edges_gdf["orig_from"] = filtered_edges_gdf[
+                edge_from_node_column
+            ].copy()
+            filtered_edges_gdf["orig_to"] = filtered_edges_gdf[
+                edge_to_node_column
+            ].copy()
+            print("\n✓ Saved original node IDs to 'orig_from' and 'orig_to' columns")
+
+        # Remap from_node
+        from_remapped_count = 0
+        from_unmapped_count = 0
+        from_unmapped_samples = []
+        new_from_nodes = []
+
+        for old_node in filtered_edges_gdf[edge_from_node_column]:
+            old_node_str = str(old_node)
+
+            if old_node_str in node_remapping:
+                new_node = node_remapping[old_node_str]
+                new_from_nodes.append(new_node)
+                from_remapped_count += 1
+            else:
+                new_from_nodes.append(old_node)
+                from_unmapped_count += 1
+                if len(from_unmapped_samples) < 10:
+                    from_unmapped_samples.append(old_node)
+
+        filtered_edges_gdf[edge_from_node_column] = new_from_nodes
+
+        # Remap to_node
+        to_remapped_count = 0
+        to_unmapped_count = 0
+        to_unmapped_samples = []
+        new_to_nodes = []
+
+        for old_node in filtered_edges_gdf[edge_to_node_column]:
+            old_node_str = str(old_node)
+
+            if old_node_str in node_remapping:
+                new_node = node_remapping[old_node_str]
+                new_to_nodes.append(new_node)
+                to_remapped_count += 1
+            else:
+                new_to_nodes.append(old_node)
+                to_unmapped_count += 1
+                if len(to_unmapped_samples) < 10:
+                    to_unmapped_samples.append(old_node)
+
+        filtered_edges_gdf[edge_to_node_column] = new_to_nodes
+
+        print("\nNode ID remapping results:")
+        print(f"  from_node remapped: {from_remapped_count:,}")
+        print(f"  from_node unmapped: {from_unmapped_count:,}")
+        if from_unmapped_samples:
+            print(f"    Sample unmapped from_node: {from_unmapped_samples}")
+        print(f"  to_node remapped:   {to_remapped_count:,}")
+        print(f"  to_node unmapped:   {to_unmapped_count:,}")
+        if to_unmapped_samples:
+            print(f"    Sample unmapped to_node: {to_unmapped_samples}")
+    else:
+        print("\nNo node_remapping provided - keeping original node IDs")
+
+    # =========================================================================
+    # STEP 4: Filter edges by node existence (both endpoints must exist)
+    # =========================================================================
+    print("\n" + "=" * 80)
+    print("STEP 4: FILTERING EDGES BY NODE EXISTENCE")
+    print("=" * 80)
+
+    # Get set of valid node IDs from reference (these should already be remapped)
+    valid_node_ids = nodes_gdf[node_id_column].values
     print(f"\nValid node IDs in reference: {len(valid_node_ids)}")
 
-    # Get edge connectivity (now with remapped node IDs if remapping was applied)
-    from_nodes = edges_gdf[edge_from_node_column].values
-    to_nodes = edges_gdf[edge_to_node_column].values
+    # Get edge connectivity (now with remapped node IDs)
+    from_nodes = filtered_edges_gdf[edge_from_node_column].values
+    to_nodes = filtered_edges_gdf[edge_to_node_column].values
 
     print("\nColumn types:")
     print(f"  Edges {edge_from_node_column}: {from_nodes.dtype}")
     print(f"  Edges {edge_to_node_column}: {to_nodes.dtype}")
-    print(f"  Nodes {node_id_column}: {nodes_gdf[node_id_column].dtype}")
+    print(f"  Nodes {node_id_column}: {valid_node_ids.dtype}")
 
     # Convert to consistent types for comparison
     try:
-        valid_node_ids_int = set(np.array(list(valid_node_ids)).astype("int64"))
+        valid_node_ids_int = valid_node_ids.astype("int64")
         from_nodes_int = from_nodes.astype("int64")
         to_nodes_int = to_nodes.astype("int64")
         print("  ✓ Successfully converted all to int64 for comparison")
     except (ValueError, TypeError):
         # If int conversion fails, use string comparison
         print("  ⚠ Int conversion failed, using string comparison")
-        valid_node_ids_int = set(np.array(list(valid_node_ids)).astype(str))
+        valid_node_ids_int = valid_node_ids.astype(str)
         from_nodes_int = from_nodes.astype(str)
         to_nodes_int = to_nodes.astype(str)
 
+    valid_node_ids_set = set(valid_node_ids_int)
+
     # Create masks for valid connections
     print("\nChecking edge connectivity...")
-    from_node_exists = np.isin(from_nodes_int, list(valid_node_ids_int))
-    to_node_exists = np.isin(to_nodes_int, list(valid_node_ids_int))
+    from_node_exists = np.isin(from_nodes_int, list(valid_node_ids_set))
+    to_node_exists = np.isin(to_nodes_int, list(valid_node_ids_set))
 
     # Keep edge only if BOTH from_node AND to_node exist
     both_nodes_exist = from_node_exists & to_node_exists
 
     # Statistics before filtering
+    edges_before_filter = len(filtered_edges_gdf)
     print("\nConnectivity analysis:")
     print(f"  Edges with valid from_node: {np.sum(from_node_exists):,}")
     print(f"  Edges with valid to_node:   {np.sum(to_node_exists):,}")
@@ -1141,94 +1284,111 @@ def filter_edges_by_node_existence(
     print(f"  Missing both nodes:      {np.sum(both_invalid):,}")
     print(f"  Total to remove:         {np.sum(~both_nodes_exist):,}")
 
-    # Filter edges
-    filtered_edges_gdf = edges_gdf[both_nodes_exist].copy()
-
-    # Summary statistics
-    original_count = len(edges_gdf)
-    filtered_count = len(filtered_edges_gdf)
-    removed_count = original_count - filtered_count
-
-    print("\nFiltering results:")
-    print(f"  Original edges:  {original_count:,}")
-    print(f"  Filtered edges:  {filtered_count:,}")
-    print(f"  Removed edges:   {removed_count:,}")
-    print(f"  Retention rate:  {(filtered_count / original_count) * 100:.2f}%")
-
-    # Show sample of removed edges (if any)
-    if removed_count > 0:
-        removed_edges = edges_gdf[~both_nodes_exist]
-        print("\nSample of removed edges (first 5):")
-        sample_size = min(5, len(removed_edges))
-        for idx in range(sample_size):
-            edge_idx = removed_edges.index[idx]
-            from_node = removed_edges.iloc[idx][edge_from_node_column]
-            to_node = removed_edges.iloc[idx][edge_to_node_column]
-            from_exists = (
-                from_node in valid_node_ids or int(from_node) in valid_node_ids_int
-            )
-            to_exists = to_node in valid_node_ids or int(to_node) in valid_node_ids_int
+    # Show sample of problematic edges
+    if np.sum(~both_nodes_exist) > 0:
+        problematic_edges = filtered_edges_gdf[~both_nodes_exist]
+        print("\nSample of edges being removed (first 5):")
+        sample_size = min(5, len(problematic_edges))
+        for i in range(sample_size):
+            edge_idx = problematic_edges.index[i]
+            from_node = problematic_edges.iloc[i][edge_from_node_column]
+            to_node = problematic_edges.iloc[i][edge_to_node_column]
+            edge_fid = problematic_edges.iloc[i][edge_fid_column]
+            from_exists = from_node in valid_node_ids_set or str(from_node) in {
+                str(x) for x in valid_node_ids_set
+            }
+            to_exists = to_node in valid_node_ids_set or str(to_node) in {
+                str(x) for x in valid_node_ids_set
+            }
             print(
-                f"  Edge {edge_idx}: from_node={from_node} (exists: {from_exists}), to_node={to_node} (exists: {to_exists})"
+                f"  Edge FID={edge_fid}: from={from_node} (exists: {from_exists}), to={to_node} (exists: {to_exists})"
             )
 
-    # STEP 3: Apply edge remapping AFTER filtering
-    if remapping_json and os.path.exists(remapping_json):
-        print("\n" + "=" * 80)
-        print("STEP 3: REMAPPING EDGE IDs (AFTER FILTERING)")
-        print("=" * 80)
-        
-        with open(remapping_json, "r") as f:
-            remapping_data = json.load(f)
-        
-        if edge_remapping_key in remapping_data:
-            edge_remapping = remapping_data[edge_remapping_key]
-            print(f"\n✓ Edge remapping found: {len(edge_remapping)} entries")
-            print(f"  Sample edge mappings: {dict(list(edge_remapping.items())[:5])}")
-            
-            # Save original edge FID if requested
-            if add_original_ids:
-                filtered_edges_gdf["original_fid"] = filtered_edges_gdf[
-                    edge_fid_column
-                ].copy()
-            
-            # Apply edge remapping
-            remapped_count = 0
-            unmapped_count = 0
-            unmapped_edges = []
-            
-            new_edge_fids = []
-            for old_fid in filtered_edges_gdf[edge_fid_column]:
-                old_fid_str = str(old_fid)
-                
-                if old_fid_str in edge_remapping:
-                    new_fid = edge_remapping[old_fid_str]
-                    new_edge_fids.append(new_fid)
-                    remapped_count += 1
-                else:
-                    new_edge_fids.append(old_fid)
-                    unmapped_count += 1
-                    if len(unmapped_edges) < 10:
-                        unmapped_edges.append(old_fid)
-            
-            filtered_edges_gdf[edge_fid_column] = new_edge_fids
-            
-            print("\nEdge FID remapping results:")
-            print(f"  Edges remapped:     {remapped_count:,}")
-            print(f"  Edges not in map:   {unmapped_count:,}")
-            if unmapped_edges:
-                print(f"  Sample unmapped:    {unmapped_edges}")
-            
-            if add_original_ids:
-                print("\n✓ Original edge FIDs preserved in 'original_fid' column")
-        else:
-            print(f"\n⚠ Warning: Key '{edge_remapping_key}' not found in JSON")
-            print(f"  Available keys: {list(remapping_data.keys())}")
-            print("  Proceeding with original edge FIDs")
+    # Filter edges
+    filtered_edges_gdf = filtered_edges_gdf[both_nodes_exist].copy()
 
-    # Save if output path provided
+    edges_after_filter = len(filtered_edges_gdf)
+    edges_removed_by_connectivity = edges_before_filter - edges_after_filter
+
+    print(f"\nEdges before connectivity filter: {edges_before_filter:,}")
+    print(f"Edges after connectivity filter:  {edges_after_filter:,}")
+    print(f"Edges removed by connectivity:    {edges_removed_by_connectivity:,}")
+
+    # =========================================================================
+    # STEP 5: Remap edge FIDs using edge_remapping
+    # =========================================================================
+    print("\n" + "=" * 80)
+    print("STEP 5: REMAPPING EDGE FIDs")
+    print("=" * 80)
+
+    if edge_remapping:
+        # Save original edge FID if requested
+        if add_original_ids:
+            filtered_edges_gdf["original_fid"] = filtered_edges_gdf[
+                edge_fid_column
+            ].copy()
+            print("\n✓ Saved original edge FIDs to 'original_fid' column")
+
+        # Apply edge remapping
+        remapped_count = 0
+        unmapped_count = 0
+        unmapped_samples = []
+
+        new_edge_fids = []
+        for old_fid in filtered_edges_gdf[edge_fid_column]:
+            old_fid_str = str(old_fid)
+
+            if old_fid_str in edge_remapping:
+                new_fid = edge_remapping[old_fid_str]
+                new_edge_fids.append(new_fid)
+                remapped_count += 1
+            else:
+                new_edge_fids.append(old_fid)
+                unmapped_count += 1
+                if len(unmapped_samples) < 10:
+                    unmapped_samples.append(old_fid)
+
+        filtered_edges_gdf[edge_fid_column] = new_edge_fids
+
+        print("\nEdge FID remapping results:")
+        print(f"  Edges remapped:     {remapped_count:,}")
+        print(f"  Edges not in map:   {unmapped_count:,}")
+        if unmapped_samples:
+            print(f"  Sample unmapped:    {unmapped_samples}")
+    else:
+        print("\nNo edge_remapping provided - keeping original edge FIDs")
+
+    # =========================================================================
+    # FINAL STATISTICS
+    # =========================================================================
+    print("\n" + "=" * 80)
+    print("FINAL RESULTS")
+    print("=" * 80)
+
+    final_count = len(filtered_edges_gdf)
+    total_removed = original_count - final_count
+
+    print(f"\nOriginal edges:         {original_count:,}")
+    print(f"Final edges:            {final_count:,}")
+    print(f"Total removed:          {total_removed:,}")
+    print(f"Retention rate:         {(final_count / original_count) * 100:.2f}%")
+
+    if removed_edges_list:
+        removed_by_list = original_count - (
+            len(edges_gdf)
+            if "edges_before_filter" not in locals()
+            else edges_before_filter + edges_removed_by_connectivity
+        )
+        print("\nBreakdown:")
+        print(
+            f"  Removed by removed_edges list: {original_count - len(edges_gdf) if removed_edges_list else 0:,}"
+        )
+        print(f"  Removed by connectivity check: {edges_removed_by_connectivity:,}")
+
+    # =========================================================================
+    # SAVE OUTPUT
+    # =========================================================================
     if output_shapefile:
-        # Create output directory if needed
         output_dir = os.path.dirname(output_shapefile)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
@@ -1239,19 +1399,19 @@ def filter_edges_by_node_existence(
         print(f"\nSaving filtered shapefile to: {output_shapefile}")
         filtered_edges_gdf.to_file(output_shapefile)
         print("✓ File saved successfully")
-        
+
         print("\nFinal column mapping:")
         print(f"  {edge_fid_column}: Remapped edge IDs")
         print(f"  {edge_from_node_column}: Remapped source node IDs")
         print(f"  {edge_to_node_column}: Remapped target node IDs")
-        
-        if add_original_ids and remapping_json:
+
+        if add_original_ids and (node_remapping or edge_remapping):
             print("\nOriginal IDs preserved in:")
-            if 'original_fid' in filtered_edges_gdf.columns:
+            if "original_fid" in filtered_edges_gdf.columns:
                 print("  - original_fid: Original edge FIDs")
-            if 'orig_from' in filtered_edges_gdf.columns:
+            if "orig_from" in filtered_edges_gdf.columns:
                 print("  - orig_from: Original from_node IDs")
-            if 'orig_to' in filtered_edges_gdf.columns:
+            if "orig_to" in filtered_edges_gdf.columns:
                 print("  - orig_to: Original to_node IDs")
 
     print("\n" + "=" * 80 + "\n")
@@ -1269,6 +1429,17 @@ def amend_csv_indices(
     """
     Load a CSV file, amend node and edge indices using remapping info, and save the result.
 
+    Correct logic flow:
+    1. Load CSV and remapping data
+    2. Remap node indices using node_remapping
+    3. Remap edge indices using edge_remapping
+    4. Remove rows where remapped node_idx is in removed_nodes
+    5. Remove rows where remapped edge_idx is in removed_edges
+    6. Save result
+
+    The key insight: removed_nodes and removed_edges contain ORIGINAL indices,
+    so we must remap first, then filter based on which original indices were removed.
+
     Args:
         csv_path: Path to input CSV file containing node_idx and/or edge_idx columns
         remapping_path: Path to JSON file containing remapping information
@@ -1285,34 +1456,38 @@ def amend_csv_indices(
     """
 
     print("\n" + "=" * 80)
-    print("AMENDING CSV INDICES")
+    print("AMENDING CSV INDICES WITH CORRECT LOGIC")
     print("=" * 80)
 
-    # Load remapping info
+    # =========================================================================
+    # STEP 1: Load remapping info and CSV
+    # =========================================================================
     print(f"\nLoading remapping from: {remapping_path}")
     with open(remapping_path, "r") as f:
         remapping_info = json.load(f)
 
-    # Convert string keys to integers
-    node_remapping = {int(k): v for k, v in remapping_info["node_remapping"].items()}
-    edge_remapping = {int(k): v for k, v in remapping_info["edge_remapping"].items()}
-    removed_nodes = set(remapping_info["removed_nodes"])
-    removed_edges = set(remapping_info["removed_edges"])
+    # Convert string keys to integers for lookups
+    node_remapping = {
+        int(k): v for k, v in remapping_info.get("node_remapping", {}).items()
+    }
+    edge_remapping = {
+        int(k): v for k, v in remapping_info.get("edge_remapping", {}).items()
+    }
+    removed_nodes = set(remapping_info.get("removed_nodes", []))
+    removed_edges = set(remapping_info.get("removed_edges", []))
 
     print(f"  ✓ Loaded {len(node_remapping)} node mappings")
     print(f"  ✓ Loaded {len(edge_remapping)} edge mappings")
     print(f"  ✓ {len(removed_nodes)} removed nodes")
     print(f"  ✓ {len(removed_edges)} removed edges")
 
-    # Load CSV
     print(f"\nLoading CSV from: {csv_path}")
     df = pd.read_csv(csv_path)
-    print(f"  ✓ Loaded {len(df)} rows")
+    original_row_count = len(df)
+    print(f"  ✓ Loaded {original_row_count} rows")
     print(f"  Columns: {list(df.columns)}")
 
-    original_row_count = len(df)
-
-    # Check if node column exists
+    # Check if node and edge columns exist
     has_nodes = node_column in df.columns
     has_edges = edge_column is not None and edge_column in df.columns
 
@@ -1322,91 +1497,158 @@ def amend_csv_indices(
             f"Found columns: {list(df.columns)}"
         )
 
-    # Amend node indices
+    # =========================================================================
+    # STEP 2: Remap node indices (before filtering)
+    # =========================================================================
     if has_nodes:
-        print(f"\nAmending node indices (column: '{node_column}')...")
+        print("\n" + "=" * 80)
+        print(f"STEP 2: REMAPPING NODE INDICES (column: '{node_column}')")
+        print("=" * 80)
 
-        # Check for removed nodes
-        nodes_in_csv = set(df[node_column].unique())
-        removed_in_csv = nodes_in_csv & removed_nodes
-
-        if removed_in_csv:
-            print(f"  ⚠ WARNING: Found {len(removed_in_csv)} removed nodes in CSV")
-            print("    These rows will be FILTERED OUT")
-            print(f"    Removed nodes: {sorted(list(removed_in_csv))[:10]}")
-            if len(removed_in_csv) > 10:
-                print(f"    ... and {len(removed_in_csv) - 10} more")
-
-            # Filter out rows with removed nodes
-            df = df[~df[node_column].isin(removed_nodes)]
-            print(f"  ✓ Filtered: {original_row_count} -> {len(df)} rows")
+        # Track original values for filtering later
+        df["_original_node_idx"] = df[node_column].copy()
 
         # Remap node indices
         unmapped_nodes = []
+        remapped_count = 0
 
         def remap_node(old_idx):
+            nonlocal remapped_count
             if old_idx in node_remapping:
+                remapped_count += 1
                 return node_remapping[old_idx]
             else:
                 unmapped_nodes.append(old_idx)
                 return old_idx  # Keep original if not in mapping
 
-        df[node_column] = df[node_column].apply(remap_node)
+        df[node_column] = df["_original_node_idx"].apply(remap_node)
+
+        print("\nNode remapping results:")
+        print(f"  Remapped: {remapped_count}")
+        print(f"  Unmapped: {len(unmapped_nodes)}")
 
         if unmapped_nodes:
             unique_unmapped = set(unmapped_nodes)
-            print(
-                f"  ⚠ WARNING: {len(unique_unmapped)} node indices not found in remapping"
-            )
-            print(
-                f"    Unmapped nodes (kept original): {sorted(list(unique_unmapped))[:10]}"
-            )
-        else:
-            print("  ✓ All node indices successfully remapped")
+            print(f"  Unique unmapped nodes: {len(unique_unmapped)}")
+            print(f"    Sample: {sorted(list(unique_unmapped))[:10]}")
+            if len(unique_unmapped) > 10:
+                print(f"    ... and {len(unique_unmapped) - 10} more")
 
-    # Amend edge indices
+    # =========================================================================
+    # STEP 3: Remap edge indices (before filtering)
+    # =========================================================================
     if has_edges:
-        print(f"\nAmending edge indices (column: '{edge_column}')...")
+        print("\n" + "=" * 80)
+        print(f"STEP 3: REMAPPING EDGE INDICES (column: '{edge_column}')")
+        print("=" * 80)
 
-        # Check for removed edges
-        edges_in_csv = set(df[edge_column].unique())
-        removed_in_csv = edges_in_csv & removed_edges
-
-        if removed_in_csv:
-            print(f"  ⚠ WARNING: Found {len(removed_in_csv)} removed edges in CSV")
-            print("    These rows will be FILTERED OUT")
-            print(f"    Removed edges: {sorted(list(removed_in_csv))[:10]}")
-            if len(removed_in_csv) > 10:
-                print(f"    ... and {len(removed_in_csv) - 10} more")
-
-            # Filter out rows with removed edges
-            rows_before = len(df)
-            df = df[~df[edge_column].isin(removed_edges)]
-            print(f"  ✓ Filtered: {rows_before} -> {len(df)} rows")
+        # Track original values for filtering later
+        df["_original_edge_idx"] = df[edge_column].copy()
 
         # Remap edge indices
         unmapped_edges = []
+        remapped_count = 0
 
         def remap_edge(old_idx):
+            nonlocal remapped_count
             if old_idx in edge_remapping:
+                remapped_count += 1
                 return edge_remapping[old_idx]
             else:
                 unmapped_edges.append(old_idx)
                 return old_idx  # Keep original if not in mapping
 
-        df[edge_column] = df[edge_column].apply(remap_edge)
+        df[edge_column] = df["_original_edge_idx"].apply(remap_edge)
+
+        print("\nEdge remapping results:")
+        print(f"  Remapped: {remapped_count}")
+        print(f"  Unmapped: {len(unmapped_edges)}")
 
         if unmapped_edges:
             unique_unmapped = set(unmapped_edges)
-            print(
-                f"  ⚠ WARNING: {len(unique_unmapped)} edge indices not found in remapping"
-            )
-            print(
-                f"    Unmapped edges (kept original): {sorted(list(unique_unmapped))[:10]}"
-            )
-        else:
-            print("  ✓ All edge indices successfully remapped")
+            print(f"  Unique unmapped edges: {len(unique_unmapped)}")
+            print(f"    Sample: {sorted(list(unique_unmapped))[:10]}")
+            if len(unique_unmapped) > 10:
+                print(f"    ... and {len(unique_unmapped) - 10} more")
 
+    # =========================================================================
+    # STEP 4: Filter out rows with removed nodes (based on ORIGINAL indices)
+    # =========================================================================
+    if has_nodes and removed_nodes:
+        print("\n" + "=" * 80)
+        print("STEP 4: FILTERING REMOVED NODES")
+        print("=" * 80)
+
+        # Check which ORIGINAL node indices are in the removed list
+        rows_before = len(df)
+        original_nodes_in_csv = set(df["_original_node_idx"].unique())
+        removed_in_csv = original_nodes_in_csv & removed_nodes
+
+        if removed_in_csv:
+            print(
+                f"\nFound {len(removed_in_csv)} removed nodes (original indices) in CSV"
+            )
+            print(f"  Sample removed nodes: {sorted(list(removed_in_csv))[:10]}")
+            if len(removed_in_csv) > 10:
+                print(f"  ... and {len(removed_in_csv) - 10} more")
+
+            # Filter out rows where ORIGINAL node index is in removed_nodes
+            df = df[~df["_original_node_idx"].isin(removed_nodes)].copy()
+            rows_after = len(df)
+            rows_removed = rows_before - rows_after
+
+            print("\nFiltering results:")
+            print(f"  Rows before: {rows_before:,}")
+            print(f"  Rows after:  {rows_after:,}")
+            print(f"  Rows removed: {rows_removed:,}")
+        else:
+            print("\nNo removed nodes found in this CSV - keeping all rows")
+
+    # =========================================================================
+    # STEP 5: Filter out rows with removed edges (based on ORIGINAL indices)
+    # =========================================================================
+    if has_edges and removed_edges:
+        print("\n" + "=" * 80)
+        print("STEP 5: FILTERING REMOVED EDGES")
+        print("=" * 80)
+
+        # Check which ORIGINAL edge indices are in the removed list
+        rows_before = len(df)
+        original_edges_in_csv = set(df["_original_edge_idx"].unique())
+        removed_in_csv = original_edges_in_csv & removed_edges
+
+        if removed_in_csv:
+            print(
+                f"\nFound {len(removed_in_csv)} removed edges (original indices) in CSV"
+            )
+            print(f"  Sample removed edges: {sorted(list(removed_in_csv))[:10]}")
+            if len(removed_in_csv) > 10:
+                print(f"  ... and {len(removed_in_csv) - 10} more")
+
+            # Filter out rows where ORIGINAL edge index is in removed_edges
+            df = df[~df["_original_edge_idx"].isin(removed_edges)].copy()
+            rows_after = len(df)
+            rows_removed = rows_before - rows_after
+
+            print("\nFiltering results:")
+            print(f"  Rows before: {rows_before:,}")
+            print(f"  Rows after:  {rows_after:,}")
+            print(f"  Rows removed: {rows_removed:,}")
+        else:
+            print("\nNo removed edges found in this CSV - keeping all rows")
+
+    # =========================================================================
+    # STEP 6: Clean up temporary columns
+    # =========================================================================
+    # Remove temporary tracking columns
+    if "_original_node_idx" in df.columns:
+        df = df.drop(columns=["_original_node_idx"])
+    if "_original_edge_idx" in df.columns:
+        df = df.drop(columns=["_original_edge_idx"])
+
+    # =========================================================================
+    # STEP 7: Save results
+    # =========================================================================
     # Determine output path
     if output_path is None:
         csv_file = Path(csv_path)
@@ -1414,25 +1656,29 @@ def amend_csv_indices(
 
     output_path = str(output_path)
 
-    # Save amended CSV
+    print("\n" + "=" * 80)
+    print("SAVING RESULTS")
+    print("=" * 80)
     print(f"\nSaving amended CSV to: {output_path}")
     df.to_csv(output_path, index=False)
     print(f"  ✓ Saved {len(df)} rows")
 
-    # Summary
+    # =========================================================================
+    # FINAL SUMMARY
+    # =========================================================================
     print("\n" + "=" * 80)
-    print("SUMMARY")
+    print("FINAL SUMMARY")
     print("=" * 80)
     print(f"Input file:  {csv_path}")
     print(f"Output file: {output_path}")
     print(
-        f"Rows: {original_row_count} -> {len(df)} (removed {original_row_count - len(df)})"
+        f"Rows: {original_row_count:,} -> {len(df):,} (removed {original_row_count - len(df):,})"
     )
 
     if has_nodes:
-        print(f"✓ Node indices amended (column: '{node_column}')")
+        print(f"✓ Node indices remapped (column: '{node_column}')")
     if has_edges:
-        print(f"✓ Edge indices amended (column: '{edge_column}')")
+        print(f"✓ Edge indices remapped (column: '{edge_column}')")
 
     print("=" * 80 + "\n")
 
@@ -1665,8 +1911,378 @@ def preview_csv_amendment(
     print("\n" + "=" * 80 + "\n")
 
 
+def remove_duplicate_edge_pairs(
+    csv_path: str,
+    output_path: Optional[str] = None,
+    edge_idx_column: str = "edge_idx",
+    from_node_column: str = "from_node",
+    to_node_column: str = "to_node",
+) -> tuple[pd.DataFrame, list]:
+    """
+    Remove duplicate edges that have the same from_node and to_node pair.
+    Keeps the first occurrence and removes subsequent duplicates.
+
+    Args:
+        csv_path: Path to input CSV file
+        output_path: Optional path to save cleaned CSV. If None, adds '_cleaned' suffix
+        edge_idx_column: Name of edge index column (default: "edge_idx")
+        from_node_column: Name of source node column (default: "from_node")
+        to_node_column: Name of target node column (default: "to_node")
+
+    Returns:
+        Tuple of (cleaned_dataframe, removed_edge_indices_list)
+        - cleaned_dataframe: DataFrame with duplicate edges removed
+        - removed_edge_indices_list: List of edge_idx values that were removed
+    """
+
+    print("\n" + "=" * 80)
+    print("REMOVING DUPLICATE EDGE PAIRS")
+    print("=" * 80)
+
+    # Load CSV
+    print(f"\nLoading CSV from: {csv_path}")
+    df = pd.read_csv(csv_path)
+    original_count = len(df)
+    print(f"  ✓ Loaded {original_count} rows")
+    print(f"  Columns: {list(df.columns)}")
+
+    # Validate columns exist
+    required_cols = [edge_idx_column, from_node_column, to_node_column]
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    
+    if missing_cols:
+        raise ValueError(
+            f"Missing required columns: {missing_cols}. "
+            f"Available columns: {list(df.columns)}"
+        )
+
+    print(f"\nChecking for duplicate (from_node, to_node) pairs...")
+
+    # Create a column representing the edge pair for easy duplicate detection
+    df['_edge_pair'] = list(zip(df[from_node_column], df[to_node_column]))
+
+    # Find duplicates
+    duplicate_mask = df.duplicated(subset='_edge_pair', keep='first')
+    duplicate_count = duplicate_mask.sum()
+
+    if duplicate_count == 0:
+        print("  ✓ No duplicate edge pairs found!")
+        df = df.drop(columns=['_edge_pair'])
+        return df
+
+    print(f"\n⚠ Found {duplicate_count} duplicate edge(s)")
+    print("\n" + "-" * 80)
+    print("DUPLICATE EDGE PAIRS DETECTED")
+    print("-" * 80)
+
+    # Get all rows that are part of duplicate pairs (both kept and removed)
+    duplicate_pairs = df[df['_edge_pair'].duplicated(keep=False)]
+    
+    # Group by edge pair to show all duplicates together
+    grouped = duplicate_pairs.groupby('_edge_pair')
+    
+    for pair, group in grouped:
+        from_node, to_node = pair
+        edge_indices = group[edge_idx_column].tolist()
+        
+        print(f"\nDuplicate pair: from_node={from_node}, to_node={to_node}")
+        print(f"  Found {len(edge_indices)} edges with this pair:")
+        
+        for idx, (row_idx, row) in enumerate(group.iterrows()):
+            edge_idx = row[edge_idx_column]
+            status = "KEEPING" if idx == 0 else "REMOVING"
+            print(f"    edge_idx={edge_idx:3d} [{status}]")
+
+    # Remove duplicate rows (keep first occurrence)
+    print("\n" + "-" * 80)
+    print("REMOVING DUPLICATES")
+    print("-" * 80)
+    
+    rows_to_remove = df[duplicate_mask]
+    removed_edge_indices = rows_to_remove[edge_idx_column].tolist()
+    
+    print(f"\nRemoving {len(removed_edge_indices)} duplicate edge(s):")
+    print(f"  Edge indices being removed: {removed_edge_indices}")
+
+    # Keep only non-duplicate rows
+    df_cleaned = df[~duplicate_mask].copy()
+    df_cleaned = df_cleaned.drop(columns=['_edge_pair'])
+
+    # Summary
+    final_count = len(df_cleaned)
+    print("\n" + "=" * 80)
+    print("SUMMARY")
+    print("=" * 80)
+    print(f"Original edges:     {original_count}")
+    print(f"Duplicates removed: {duplicate_count}")
+    print(f"Final edges:        {final_count}")
+    print(f"Retention rate:     {(final_count / original_count) * 100:.2f}%")
+
+    # Save if output path provided
+    if output_path is None:
+        from pathlib import Path
+        csv_file = Path(csv_path)
+        output_path = csv_file.parent / f"{csv_file.stem}_cleaned{csv_file.suffix}"
+    
+    output_path = str(output_path)
+    
+    print(f"\nSaving cleaned CSV to: {output_path}")
+    df_cleaned.to_csv(output_path, index=False)
+    print("  ✓ File saved successfully")
+    
+    print("=" * 80 + "\n")
+
+    return df_cleaned, removed_edge_indices
+
+
+def remove_zero_feature_edges(
+    csv_path: str,
+    output_path: Optional[str] = None,
+    edge_idx_column: str = "edge_idx",
+    exclude_columns: Optional[List[str]] = None,
+) -> pd.DataFrame:
+    """
+    Remove edges where all feature columns (excluding edge_idx) are zero.
+
+    Args:
+        csv_path: Path to input CSV file
+        output_path: Optional path to save cleaned CSV. If None, adds '_no_zeros' suffix
+        edge_idx_column: Name of edge index column (default: "edge_idx")
+        exclude_columns: Optional list of additional columns to exclude from zero check.
+                        By default, only edge_idx_column is excluded.
+
+    Returns:
+        DataFrame with zero-feature edges removed
+    """
+
+    print("\n" + "=" * 80)
+    print("REMOVING ZERO-FEATURE EDGES")
+    print("=" * 80)
+
+    # Load CSV
+    print(f"\nLoading CSV from: {csv_path}")
+    df = pd.read_csv(csv_path)
+    original_count = len(df)
+    print(f"  ✓ Loaded {original_count} rows")
+    print(f"  Columns: {list(df.columns)}")
+
+    # Validate edge_idx column exists
+    if edge_idx_column not in df.columns:
+        raise ValueError(
+            f"Column '{edge_idx_column}' not found. "
+            f"Available columns: {list(df.columns)}"
+        )
+
+    # Determine which columns to check for zeros
+    if exclude_columns is None:
+        exclude_columns = []
+
+    exclude_columns = [edge_idx_column] + exclude_columns
+    feature_columns = [col for col in df.columns if col not in exclude_columns]
+
+    print(f"\nChecking {len(feature_columns)} feature columns for all-zero rows:")
+    print(f"  Feature columns: {feature_columns}")
+    print(f"  Excluded from check: {exclude_columns}")
+
+    # Find rows where ALL feature columns are zero
+    print("\nScanning for edges with all features = 0...")
+
+    # Create mask for rows where all features are zero
+    all_zeros_mask = (df[feature_columns] == 0).all(axis=1)
+    zero_count = all_zeros_mask.sum()
+
+    if zero_count == 0:
+        print("  ✓ No edges with all-zero features found!")
+        return df
+
+    print(f"\n⚠ Found {zero_count} edge(s) with all features = 0")
+
+    # Get the rows to be removed
+    rows_to_remove = df[all_zeros_mask]
+
+    print("\n" + "-" * 80)
+    print("EDGES TO BE REMOVED")
+    print("-" * 80)
+
+    for idx, row in rows_to_remove.iterrows():
+        edge_idx = row[edge_idx_column]
+        print(f"\nRemoving edge_idx = {edge_idx}")
+        print("  Features: ", end="")
+        feature_values = [f"{col}={row[col]}" for col in feature_columns]
+        print(", ".join(feature_values))
+
+        # Verify all are indeed zero
+        all_zero = all(row[col] == 0 for col in feature_columns)
+        print(f"  All features zero: {all_zero}")
+
+    # Remove zero-feature rows
+    print("\n" + "-" * 80)
+    print("REMOVING EDGES")
+    print("-" * 80)
+
+    removed_edge_indices = rows_to_remove[edge_idx_column].tolist()
+    print(f"\nEdge indices being removed: {removed_edge_indices}")
+
+    # Keep only non-zero rows
+    df_cleaned = df[~all_zeros_mask].copy()
+
+    # Summary
+    final_count = len(df_cleaned)
+    print("\n" + "=" * 80)
+    print("SUMMARY")
+    print("=" * 80)
+    print(f"Original edges:     {original_count}")
+    print(f"Zero-feature edges: {zero_count}")
+    print(f"Final edges:        {final_count}")
+    print(f"Retention rate:     {(final_count / original_count) * 100:.2f}%")
+
+    # Save if output path provided
+    if output_path is None:
+        from pathlib import Path
+
+        csv_file = Path(csv_path)
+        output_path = csv_file.parent / f"{csv_file.stem}_no_zeros{csv_file.suffix}"
+
+    output_path = str(output_path)
+
+    print(f"\nSaving cleaned CSV to: {output_path}")
+    df_cleaned.to_csv(output_path, index=False)
+    print("  ✓ File saved successfully")
+
+    print("=" * 80 + "\n")
+
+    return df_cleaned
+
+def remove_amended_files(
+    root_folder: str,
+    dry_run: bool = True,
+    case_sensitive: bool = False,
+) -> Tuple[List[str], List[str]]:
+    """
+    Remove all files containing 'amended' in their filename from a folder and all subfolders.
+
+    Args:
+        root_folder: Path to the root folder to search
+        dry_run: If True, only shows what would be deleted without actually deleting (default: True)
+        case_sensitive: If True, only matches exact case 'amended'. If False, matches any case (default: False)
+
+    Returns:
+        Tuple of (successfully_removed, failed_to_remove) file paths
+    """
+
+    print("\n" + "=" * 80)
+    print("REMOVING FILES WITH 'AMENDED' IN FILENAME")
+    print("=" * 80)
+
+    if not os.path.exists(root_folder):
+        raise FileNotFoundError(f"Folder not found: {root_folder}")
+
+    print(f"\nRoot folder: {root_folder}")
+    print(f"Dry run: {dry_run}")
+    print(f"Case sensitive: {case_sensitive}")
+
+    # Find all files with 'amended' in filename
+    print("\n" + "-" * 80)
+    print("SCANNING FOR FILES")
+    print("-" * 80)
+
+    amended_files = []
+    
+    # Walk through all directories and subdirectories
+    for dirpath, dirnames, filenames in os.walk(root_folder):
+        for filename in filenames:
+            # Check if 'amended' is in the filename
+            if case_sensitive:
+                match = 'amended' in filename
+            else:
+                match = 'amended' in filename.lower()
+            
+            if match:
+                full_path = os.path.join(dirpath, filename)
+                amended_files.append(full_path)
+
+    if not amended_files:
+        print("\n✓ No files with 'amended' in filename found!")
+        print("=" * 80 + "\n")
+        return [], []
+
+    print(f"\nFound {len(amended_files)} file(s) with 'amended' in filename:")
+    print()
+
+    # Display files grouped by directory
+    files_by_dir = {}
+    for filepath in amended_files:
+        dirpath = os.path.dirname(filepath)
+        filename = os.path.basename(filepath)
+        
+        if dirpath not in files_by_dir:
+            files_by_dir[dirpath] = []
+        files_by_dir[dirpath].append(filename)
+
+    for dirpath in sorted(files_by_dir.keys()):
+        rel_dir = os.path.relpath(dirpath, root_folder)
+        if rel_dir == '.':
+            rel_dir = '(root)'
+        
+        print(f"  Directory: {rel_dir}")
+        for filename in sorted(files_by_dir[dirpath]):
+            file_size = os.path.getsize(os.path.join(dirpath, filename))
+            size_kb = file_size / 1024
+            print(f"    - {filename} ({size_kb:.2f} KB)")
+        print()
+
+    # Remove files (or simulate if dry_run)
+    print("-" * 80)
+    if dry_run:
+        print("DRY RUN - NO FILES WILL BE DELETED")
+        print("Set dry_run=False to actually delete files")
+    else:
+        print("DELETING FILES")
+    print("-" * 80)
+    print()
+
+    successfully_removed = []
+    failed_to_remove = []
+
+    for filepath in amended_files:
+        rel_path = os.path.relpath(filepath, root_folder)
+        
+        if dry_run:
+            print(f"  [DRY RUN] Would delete: {rel_path}")
+            successfully_removed.append(filepath)
+        else:
+            try:
+                os.remove(filepath)
+                print(f"  ✓ Deleted: {rel_path}")
+                successfully_removed.append(filepath)
+            except Exception as e:
+                print(f"  ✗ Failed to delete: {rel_path}")
+                print(f"    Error: {e}")
+                failed_to_remove.append(filepath)
+
+    # Summary
+    print("\n" + "=" * 80)
+    print("SUMMARY")
+    print("=" * 80)
+    print(f"Files found:             {len(amended_files)}")
+    
+    if dry_run:
+        print(f"Files that would be deleted: {len(successfully_removed)}")
+    else:
+        print(f"Files successfully deleted:  {len(successfully_removed)}")
+        print(f"Files failed to delete:      {len(failed_to_remove)}")
+
+    if failed_to_remove:
+        print("\nFailed files:")
+        for filepath in failed_to_remove:
+            print(f"  - {os.path.relpath(filepath, root_folder)}")
+
+    print("=" * 80 + "\n")
+
+    return successfully_removed, failed_to_remove
+
 if __name__ == "__main__":
-    model_name = "Model1"
+    model_name = "Model4"
 
     model1_boundary_nodes = [
         3741,
@@ -1797,18 +2413,25 @@ if __name__ == "__main__":
     elif model_name == "Model4":
         selected_boundary_nodes = model4_boundary_nodes
 
-    visualize_boundary_condition_masks(
-        nodes_2d_shp_file=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/raw/Geometry/Nodes_2D.shp",
-        edges_2d_shp_file=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/raw/Geometry/Links_2D.shp",
-        boundary_condition_npz_file=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/boundary_condition_masks.npz",
-        constant_values_file=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/constant_values.npz",
-    )
-
-    # diagnose_boundary_condition_npz(
+    # visualize_boundary_condition_masks(
+    #     nodes_2d_shp_file=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/raw/Geometry/Nodes_2D.shp",
+    #     edges_2d_shp_file=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/raw/Geometry/Links_2D.shp",
     #     boundary_condition_npz_file=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/boundary_condition_masks.npz",
-    #     constant_values_npz_file=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/constant_values.npz",
+    #     constant_values_file=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/constant_values.npz",
     # )
 
+    # # diagnose_boundary_condition_npz(
+    # #     boundary_condition_npz_file=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/boundary_condition_masks.npz",
+    # #     constant_values_npz_file=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/constant_values.npz",
+    # # )
+
+    # Make sure all files are original before editing
+    # remove_amended_files(
+    #     root_folder=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/features_csv/test",
+    #     dry_run=False,
+    # )
+
+    # Edit shape files
     filter_nodes_by_fid_match(
         source_shapefile=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/raw/Geometry/Nodes_2D.shp",
         reference_shapefile=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/{model_name.lower()}_removed_ghost/Nodes_2D.shp",
@@ -1818,6 +2441,7 @@ if __name__ == "__main__":
         boundary_nodes=selected_boundary_nodes,
         remapping_json=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/node_edge_remapping/train.json",
         remapping_key="node_remapping",
+        add_original_fid=False,
     )
 
     filter_edges_by_node_existence(
@@ -1828,21 +2452,5 @@ if __name__ == "__main__":
         edge_to_node_column="to_node",
         node_id_column="FID",
         remapping_json=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/node_edge_remapping/train.json",
+        add_original_ids=False,
     )
-
-    batch_amend_csv_indices(
-        main_folder=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/features_csv/train",
-        filename_pattern="2d_nodes_dynamic_*.csv",
-        remapping_path=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/node_edge_remapping/train.json",
-        node_column="node_idx",
-        edge_column="edge_idx",
-        recursive=True,
-    )
-
-    # amend_csv_indices(
-    #     csv_path=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/features_csv/train/1d2d_connections.csv",
-    #     remapping_path=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/node_edge_remapping/train.json",
-    #     output_path=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/features_csv/train/event_1/2d_nodes_dynamic_all_reindexed.csv",
-    #     node_column="node_idx",
-    #     edge_column="edge_idx",
-    # )

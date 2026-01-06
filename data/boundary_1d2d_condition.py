@@ -152,7 +152,7 @@ class Boundary1d2dCondition:
 
         # If no boundary nodes, initialize empty arrays
         if len(boundary_nodes) == 0:
-            print("\n⚠️  No boundary nodes - initializing empty arrays")
+            print("\nNo boundary nodes - initializing empty arrays")
             self._boundary_edge_index = np.empty((2, 0), dtype=edge_index.dtype)
             self._boundary_dynamic_edges = np.empty(
                 (dynamic_edges.shape[0], 0, dynamic_edges.shape[2]),
@@ -421,6 +421,48 @@ class Boundary1d2dCondition:
                 removed_edges.append(old_edge_idx)
             old_edge_idx += 1
 
+        # After creating edge_remapping but before storing remapping_info
+        print(f"\n{'=' * 40}")
+        print("CHECKING FOR EXTRA EDGES BEYOND REMAPPING")
+        print(f"{'=' * 40}")
+
+        edges_in_remapping = len(edge_remapping)
+        edges_in_data = edge_index_remapped.shape[1]
+
+        if edges_in_data > edges_in_remapping:
+            extra_edges_count = edges_in_data - edges_in_remapping
+            print(
+                f"\n⚠ WARNING: Found {extra_edges_count} extra edges beyond remapping!"
+            )
+            print(
+                f"  Edges in remapping: {edges_in_remapping} (0 to {edges_in_remapping - 1})"
+            )
+            print(f"  Edges in data: {edges_in_data} (0 to {edges_in_data - 1})")
+            print(
+                f"  Extra edge indices to remove: {list(range(edges_in_remapping, edges_in_data))}"
+            )
+
+            # Remove extra edges
+            indices_to_keep = list(range(edges_in_remapping))
+
+            edge_index_remapped = edge_index_remapped[:, indices_to_keep]
+            static_edges_filtered = static_edges_filtered[indices_to_keep, :]
+            dynamic_edges_filtered = dynamic_edges_filtered[:, indices_to_keep]
+
+            # Add these to removed_edges list
+            for i in range(edges_in_remapping, edges_in_data):
+                removed_edges.append(i)
+
+            print("\n  After removal:")
+            print(f"    edge_index: {edge_index_remapped.shape}")
+            print(f"    static_edges: {static_edges_filtered.shape}")
+            print(f"    dynamic_edges: {dynamic_edges_filtered.shape}")
+        else:
+            print(f"\n✓ Edge count matches remapping: {edges_in_data} edges")
+
+        # Update new_num_edges after potential removal
+        new_num_edges = edge_index_remapped.shape[1]
+
         # Store final dimensions
         new_num_nodes = static_nodes_filtered.shape[0]
         new_num_edges = edge_index_remapped.shape[1]
@@ -589,44 +631,80 @@ class Boundary1d2dCondition:
             self._boundary_edge_index is not None
             and self._boundary_edge_index.shape[1] > 0
         ):
-            _, num_static_edge_feat = static_edges.shape
+            print("\nChecking for duplicate boundary edges...")
 
-            print(f"\nAdding {self._boundary_edge_index.shape[1]} boundary edges...")
+            # Create set of existing edge pairs for fast lookup
+            existing_edges = set()
+            for i in range(edge_index.shape[1]):
+                edge_pair = (edge_index[0, i], edge_index[1, i])
+                existing_edges.add(edge_pair)
 
-            # Create zero static features for boundary edges
-            boundary_static_edges = np.zeros(
-                (self._boundary_edge_index.shape[1], num_static_edge_feat),
-                dtype=static_edges.dtype,
-            )
+            print(f"  Existing edges in edge_index: {len(existing_edges)}")
 
-            print(f"  Before concatenate - static_edges: {static_edges.shape}")
-            static_edges = np.concatenate([static_edges, boundary_static_edges], axis=0)
-            print(f"  After concatenate - static_edges: {static_edges.shape}")
+            # Find which boundary edges are NOT duplicates
+            new_boundary_indices = []
+            duplicate_count = 0
 
-            print(f"\n  Before concatenate - dynamic_edges: {dynamic_edges.shape}")
-            dynamic_edges = np.concatenate(
-                [dynamic_edges, self._boundary_dynamic_edges], axis=1
-            )
-            print(f"  After concatenate - dynamic_edges: {dynamic_edges.shape}")
+            for i in range(self._boundary_edge_index.shape[1]):
+                boundary_pair = (
+                    self._boundary_edge_index[0, i],
+                    self._boundary_edge_index[1, i],
+                )
+                if boundary_pair not in existing_edges:
+                    new_boundary_indices.append(i)
+                else:
+                    duplicate_count += 1
 
-            print(f"\n  Before concatenate - edge_index: {edge_index.shape}")
-            print(f"  Boundary edge_index to add: {self._boundary_edge_index.shape}")
-            print("  First 5 boundary edges (original indices):")
-            for i in range(min(5, self._boundary_edge_index.shape[1])):
-                print(
-                    f"    {self._boundary_edge_index[0, i]} -> {self._boundary_edge_index[1, i]}"
+            print(f"  Boundary edges to add: {self._boundary_edge_index.shape[1]}")
+            print(f"  Duplicates found: {duplicate_count}")
+            print(f"  New edges to add: {len(new_boundary_indices)}")
+
+            if len(new_boundary_indices) > 0:
+                # Only add non-duplicate boundary edges
+                new_boundary_edge_index = self._boundary_edge_index[
+                    :, new_boundary_indices
+                ]
+                new_boundary_dynamic_edges = self._boundary_dynamic_edges[
+                    :, new_boundary_indices
+                ]
+
+                _, num_static_edge_feat = static_edges.shape
+
+                print(f"\nAdding {len(new_boundary_indices)} NEW boundary edges...")
+
+                # Create zero static features for NEW boundary edges only
+                boundary_static_edges = np.zeros(
+                    (len(new_boundary_indices), num_static_edge_feat),
+                    dtype=static_edges.dtype,
                 )
 
-            edge_index = np.concatenate([edge_index, self._boundary_edge_index], axis=1)
-            print(f"  After concatenate - edge_index: {edge_index.shape}")
+                print(f"  Before concatenate - static_edges: {static_edges.shape}")
+                static_edges = np.concatenate(
+                    [static_edges, boundary_static_edges], axis=0
+                )
+                print(f"  After concatenate - static_edges: {static_edges.shape}")
 
-            # Extend masks for new boundary edges
-            boundary_edges_valid_mask = np.ones(
-                self._boundary_edge_index.shape[1], dtype=bool
-            )
-            self._valid_edges_mask = np.concatenate(
-                [self._valid_edges_mask, boundary_edges_valid_mask]
-            )
+                print(f"\n  Before concatenate - dynamic_edges: {dynamic_edges.shape}")
+                dynamic_edges = np.concatenate(
+                    [dynamic_edges, new_boundary_dynamic_edges], axis=1
+                )
+                print(f"  After concatenate - dynamic_edges: {dynamic_edges.shape}")
+
+                print(f"\n  Before concatenate - edge_index: {edge_index.shape}")
+                edge_index = np.concatenate(
+                    [edge_index, new_boundary_edge_index], axis=1
+                )
+                print(f"  After concatenate - edge_index: {edge_index.shape}")
+
+                # Extend masks for new boundary edges
+                boundary_edges_valid_mask = np.ones(
+                    len(new_boundary_indices), dtype=bool
+                )
+                self._valid_edges_mask = np.concatenate(
+                    [self._valid_edges_mask, boundary_edges_valid_mask]
+                )
+            else:
+                print("\n✓ All boundary edges already exist - skipping addition")
 
         new_num_nodes = static_nodes.shape[0]
 

@@ -838,7 +838,7 @@ if __name__ == "__main__":
     test_only = True
     if test_only:
         load_model_and_predict(
-            max_events=None,
+            max_events=1,
             checkpoint_path="./two_head_checkpoints/best_model_overall_nse.pt",
             test_events=test_events,
             normalizer_1d_path="train_normalizer_two_head_1d.pkl",

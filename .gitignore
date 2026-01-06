@@ -198,9 +198,11 @@ _personal_tests.ipynb
 *.pt
 *.pkl
 *.zip
+*.parquet
 
 # Experiment files
 Model2_trained/*
+kaggle_submission/*
 
 # Shape files
 model1_removed_ghost/*

@@ -12,7 +12,7 @@ def nse(y_true, y_pred):
 
     # Safety check (important for dry or constant series)
     if denominator == 0:
-        denominator = 0.0001
+        return np.nan
 
     return 1 - np.sum((y_true - y_pred) ** 2) / denominator
 
@@ -280,7 +280,7 @@ def evaluate_predictions_hierarchical(
 
         # Step 2: Average per-node NSE to get per-event NSE
         if node_nse_list:
-            event_nse = np.mean(node_nse_list)
+            event_nse = np.nanmean(node_nse_list)
             event_nse_list.append(event_nse)
 
             event_details.append(
@@ -296,7 +296,7 @@ def evaluate_predictions_hierarchical(
             )
 
     # Step 3: Average per-event NSE to get overall NSE
-    overall_nse_hierarchical = np.mean(event_nse_list) if event_nse_list else np.nan
+    overall_nse_hierarchical = np.nanmean(event_nse_list) if event_nse_list else np.nan
 
     print("\nHierarchical NSE Results:")
     print(f"  Total events: {len(unique_events)}")
@@ -397,11 +397,9 @@ def evaluate_predictions_hierarchical(
                         node_nse_1d_list.append(nse_node)
 
                 if node_nse_1d_list:
-                    event_nse_1d_list.append(np.mean(node_nse_1d_list))
+                    event_nse_1d_list.append(np.nanmean(node_nse_1d_list))
 
-            nse_1d_hierarchical = (
-                np.mean(event_nse_1d_list) if event_nse_1d_list else np.nan
-            )
+            nse_1d_hierarchical = np.nanmean(event_nse_1d_list) if event_nse_1d_list else np.nan
 
             print(f"  Samples: {len(df_1d)}")
             print(f"  Unique nodes: {df_1d['node_id'].nunique()}")
@@ -481,9 +479,7 @@ def evaluate_predictions_hierarchical(
                 if node_nse_2d_list:
                     event_nse_2d_list.append(np.mean(node_nse_2d_list))
 
-            nse_2d_hierarchical = (
-                np.mean(event_nse_2d_list) if event_nse_2d_list else np.nan
-            )
+            nse_2d_hierarchical = np.nanmean(event_nse_2d_list) if event_nse_2d_list else np.nan
 
             print(f"  Samples: {len(df_2d)}")
             print(f"  Unique nodes: {df_2d['node_id'].nunique()}")

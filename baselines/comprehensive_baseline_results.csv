@@ -1,0 +1,12 @@
+baseline_method,nse_score,description
+naive_all_zeros,-2.64E+30,All zeros
+location_mean_per_node,-1.48E+27,Input the mean for each node as water level
+location_mean_per_node_type,-1.50E+28,Input the mean for each node type as water level
+naive_mean_per_event,-5.82E+27,Input the mean for each event as water level
+hierarchical_mean_per_model,-5.85E+27,Input the mean for each model as water level
+hierarchical_global_mean,-1.60E+30,Input the mean for both models as water level
+location_random_per_node,-2.01E+27,Input a random number between min and max for each node as water level
+location_random_per_node_type,-1.97E+28,Input a random number between min and max for each node type as water level
+naive_random_per_event,-2.08E+28,Input a random number between min and max for each event as water level
+temporal_linear_trend,-461.3025595,Increase the water level value by 1 for each timestep (Keep the first water level)
+temporal_persistence_t10,-1.749762596,Repeat the 10th timestep value for each nodes
