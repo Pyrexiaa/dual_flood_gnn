@@ -1,12 +1,12 @@
-baseline_method,nse_score,description
-naive_all_zeros,-2.64E+30,All zeros
-location_mean_per_node,-1.48E+27,Input the mean for each node as water level
-location_mean_per_node_type,-1.50E+28,Input the mean for each node type as water level
-naive_mean_per_event,-5.82E+27,Input the mean for each event as water level
-hierarchical_mean_per_model,-5.85E+27,Input the mean for each model as water level
-hierarchical_global_mean,-1.60E+30,Input the mean for both models as water level
-location_random_per_node,-2.01E+27,Input a random number between min and max for each node as water level
-location_random_per_node_type,-1.97E+28,Input a random number between min and max for each node type as water level
-naive_random_per_event,-2.08E+28,Input a random number between min and max for each event as water level
-temporal_linear_trend,-461.3025595,Increase the water level value by 1 for each timestep (Keep the first water level)
-temporal_persistence_t10,-1.749762596,Repeat the 10th timestep value for each nodes
+baseline_method,nse_score,category
+temporal_persistence_t10,-1.7497625961836096,Temporal
+temporal_linear_trend,-461.3025594679525,Temporal
+location_mean_per_node,-1.4818910704893538e+27,Location-Aware
+location_random_per_node,-2.009028659416848e+27,Location-Aware
+naive_mean_per_event,-5.818407853385596e+27,Naive
+hierarchical_mean_per_model,-5.849364289586688e+27,Hierarchical
+location_mean_per_node_type,-1.5015972661320634e+28,Location-Aware
+location_random_per_node_type,-1.97113879330843e+28,Location-Aware
+naive_random_per_event,-2.0800625255143754e+28,Naive
+hierarchical_global_mean,-1.6035784342614952e+30,Hierarchical
+naive_all_zeros,-2.6379243809149495e+30,Naive

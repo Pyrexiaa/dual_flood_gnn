@@ -554,3 +554,225 @@ class CombinedDataset(Dataset):
             idx_2d = idx - len(self.dataset_1d)
             X, y, node_id, timestep, event_id = self.dataset_2d[idx_2d]  # NEW: Unpack metadata
             return X, y, torch.tensor(1), node_id, timestep, event_id  # node_type=1
+        
+class SequenceDataset(Dataset):
+    """
+    Dataset that groups consecutive timesteps from the same node into sequences.
+    This enables true sequential autoregressive training.
+    """
+    
+    def __init__(self, base_dataset, min_sequence_length=5, max_sequence_length=50):
+        """
+        Args:
+            base_dataset: The original JointWaterLevelDataset
+            min_sequence_length: Minimum number of consecutive timesteps required
+            max_sequence_length: Maximum sequence length (for memory efficiency)
+        """
+        self.base_dataset = base_dataset
+        self.min_sequence_length = min_sequence_length
+        self.max_sequence_length = max_sequence_length
+        
+        print(f"\nCreating SequenceDataset...")
+        print(f"  Min sequence length: {min_sequence_length}")
+        print(f"  Max sequence length: {max_sequence_length}")
+        
+        # Group samples by (event_id, node_id)
+        self.sequences = self._create_sequences()
+        
+        print(f"  Created {len(self.sequences)} sequences")
+        seq_lengths = [len(seq['indices']) for seq in self.sequences]
+        print(f"  Sequence lengths - Min: {min(seq_lengths)}, Max: {max(seq_lengths)}, Mean: {np.mean(seq_lengths):.1f}")
+        
+        # Analyze by node type
+        node_types = [seq['node_type'] for seq in self.sequences]
+        num_1d = sum(1 for nt in node_types if nt == 0)
+        num_2d = sum(1 for nt in node_types if nt == 1)
+        print(f"  Node type distribution:")
+        print(f"    1D sequences: {num_1d}")
+        print(f"    2D sequences: {num_2d}")
+        
+        if num_1d == 0:
+            print(f"  ⚠️  WARNING: No 1D sequences found!")
+            print(f"  This might be because:")
+            print(f"    - 1D nodes have fewer than {min_sequence_length} consecutive timesteps")
+            print(f"    - 1D samples are not consecutive in the dataset")
+    
+    def _create_sequences(self):
+        """Group consecutive timesteps into sequences."""
+        # Group by (event_id, node_id)
+        grouped = defaultdict(list)
+        
+        # Track statistics
+        node_type_counts = defaultdict(int)
+        
+        for idx in range(len(self.base_dataset)):
+            X, y, node_type, node_id, timestep, event_id = self.base_dataset[idx]
+            
+            node_type_val = int(node_type)
+            node_type_counts[node_type_val] += 1
+            
+            key = (int(event_id), int(node_id))
+            grouped[key].append({
+                'idx': idx,
+                'timestep': int(timestep),
+                'node_type': node_type_val,
+            })
+        
+        print(f"  Total samples by node type:")
+        print(f"    1D: {node_type_counts.get(0, 0)}")
+        print(f"    2D: {node_type_counts.get(1, 0)}")
+        print(f"  Unique (event, node) groups: {len(grouped)}")
+        
+        # Sort by timestep and create sequences
+        sequences = []
+        groups_by_node_type = defaultdict(int)
+        sequences_created_by_type = defaultdict(int)
+        filtered_by_length = defaultdict(int)
+        
+        for (event_id, node_id), samples in grouped.items():
+            # Sort by timestep
+            samples = sorted(samples, key=lambda x: x['timestep'])
+            node_type_val = samples[0]['node_type']
+            groups_by_node_type[node_type_val] += 1
+            
+            # Check if timesteps are consecutive
+            timesteps = [s['timestep'] for s in samples]
+            indices = [s['idx'] for s in samples]
+            
+            # Split into consecutive sequences
+            current_seq = [indices[0]]
+            current_timesteps = [timesteps[0]]
+            
+            for i in range(1, len(timesteps)):
+                if timesteps[i] == timesteps[i-1] + 1:  # Consecutive
+                    current_seq.append(indices[i])
+                    current_timesteps.append(timesteps[i])
+                    
+                    # Check if we've reached max length
+                    if len(current_seq) >= self.max_sequence_length:
+                        if len(current_seq) >= self.min_sequence_length:
+                            sequences.append({
+                                'indices': current_seq,
+                                'timesteps': current_timesteps,
+                                'event_id': event_id,
+                                'node_id': node_id,
+                                'node_type': node_type_val,
+                            })
+                            sequences_created_by_type[node_type_val] += 1
+                        else:
+                            filtered_by_length[node_type_val] += 1
+                        current_seq = []
+                        current_timesteps = []
+                else:  # Gap in timesteps, start new sequence
+                    if len(current_seq) >= self.min_sequence_length:
+                        sequences.append({
+                            'indices': current_seq,
+                            'timesteps': current_timesteps,
+                            'event_id': event_id,
+                            'node_id': node_id,
+                            'node_type': node_type_val,
+                        })
+                        sequences_created_by_type[node_type_val] += 1
+                    else:
+                        filtered_by_length[node_type_val] += 1
+                    current_seq = [indices[i]]
+                    current_timesteps = [timesteps[i]]
+            
+            # Add final sequence
+            if len(current_seq) >= self.min_sequence_length:
+                sequences.append({
+                    'indices': current_seq,
+                    'timesteps': current_timesteps,
+                    'event_id': event_id,
+                    'node_id': node_id,
+                    'node_type': node_type_val,
+                })
+                sequences_created_by_type[node_type_val] += 1
+            else:
+                filtered_by_length[node_type_val] += 1
+        
+        print(f"  Groups by node type:")
+        print(f"    1D groups: {groups_by_node_type.get(0, 0)}")
+        print(f"    2D groups: {groups_by_node_type.get(1, 0)}")
+        print(f"  Sequences created by node type:")
+        print(f"    1D sequences: {sequences_created_by_type.get(0, 0)}")
+        print(f"    2D sequences: {sequences_created_by_type.get(1, 0)}")
+        print(f"  Filtered (too short, <{self.min_sequence_length}):")
+        print(f"    1D filtered: {filtered_by_length.get(0, 0)}")
+        print(f"    2D filtered: {filtered_by_length.get(1, 0)}")
+        
+        return sequences
+    
+    def __len__(self):
+        return len(self.sequences)
+    
+    def __getitem__(self, idx):
+        """
+        Returns a full sequence of consecutive timesteps.
+        
+        Returns:
+            X_seq: (seq_len, window, features) - input windows
+            y_seq: (seq_len,) - targets for each step
+            node_type: scalar
+            node_id: scalar
+            timesteps: (seq_len,) - timestep for each sample
+            event_id: scalar
+            sequence_length: scalar - actual length of sequence
+        """
+        seq_info = self.sequences[idx]
+        indices = seq_info['indices']
+        
+        # Gather all samples in sequence
+        X_list = []
+        y_list = []
+        
+        for sample_idx in indices:
+            X, y, node_type, node_id, timestep, event_id = self.base_dataset[sample_idx]
+            X_list.append(X)
+            y_list.append(y)
+        
+        X_seq = torch.stack(X_list)  # (seq_len, window, features)
+        y_seq = torch.stack(y_list).squeeze(-1)  # (seq_len,)
+        
+        return (
+            X_seq,
+            y_seq,
+            torch.tensor(seq_info['node_type']),
+            torch.tensor(seq_info['node_id']),
+            torch.tensor(seq_info['timesteps']),
+            torch.tensor(seq_info['event_id']),
+            len(indices)  # sequence_length
+        )
+    
+def collate_sequences(batch):
+    """
+    Custom collate function to handle variable-length sequences.
+    Pads sequences to the same length within a batch.
+    """
+    X_seqs, y_seqs, node_types, node_ids, timesteps, event_ids, seq_lengths = zip(*batch)
+    
+    # Find max sequence length in this batch
+    max_len = max(seq_lengths)
+    batch_size = len(batch)
+    window_size = X_seqs[0].shape[1]
+    num_features = X_seqs[0].shape[2]
+    
+    # Pad sequences
+    X_padded = torch.zeros(batch_size, max_len, window_size, num_features)
+    y_padded = torch.zeros(batch_size, max_len)
+    timesteps_padded = torch.zeros(batch_size, max_len, dtype=torch.long)
+    
+    for i, (X, y, ts, seq_len) in enumerate(zip(X_seqs, y_seqs, timesteps, seq_lengths)):
+        X_padded[i, :seq_len] = X
+        y_padded[i, :seq_len] = y
+        timesteps_padded[i, :seq_len] = ts
+    
+    return (
+        X_padded,
+        y_padded,
+        torch.stack(node_types),
+        torch.stack(node_ids),
+        timesteps_padded,
+        torch.stack(event_ids),
+        torch.tensor(seq_lengths)
+    )

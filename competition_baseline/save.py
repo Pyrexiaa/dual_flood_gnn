@@ -4,6 +4,7 @@ from constants import FEATURE_NAMES, STATIC_FEATURES, DYNAMIC_FEATURES
 from torch.utils.data import DataLoader
 import torch
 from pathlib import Path
+import numpy as np
 
 
 def save_batch_timeseries(
@@ -389,6 +390,415 @@ def save_predictions(
     print(f"  Unique nodes: {df['node_id'].nunique() if 'node_id' in df else 'N/A'}")
     print(f"  1D samples: {(df['node_type'] == 0).sum()}")
     print(f"  2D samples: {(df['node_type'] == 1).sum()}")
+
+    return df
+
+
+def save_predictions_autoregressive(
+    model,
+    dataset,
+    normalizer_1d,
+    normalizer_2d,
+    save_path,
+    water_level_idx=0,
+    batch_size=32,
+    device="cuda" if torch.cuda.is_available() else "cpu",
+    initial_ground_truth_steps=0,  # Number of initial steps to use ground truth before AR
+    max_ar_steps=None,  # Optional: limit max predictions per sequence (None = predict all)
+    use_sequence_dataset=False,  # Whether input is SequenceDataset
+):
+    """
+    Save autoregressive model predictions for ALL available timesteps.
+
+    Works with both regular datasets and SequenceDataset:
+    - Regular dataset: Groups samples by (event_id, node_id) internally
+    - SequenceDataset: Uses pre-organized sequences directly (faster!)
+
+    Prediction strategy:
+    1. Get sequences (either from SequenceDataset or by grouping)
+    2. For each sequence, predict ALL available timesteps
+    3. Use ground truth warmup for first N steps if specified
+    4. Then switch to pure autoregressive prediction
+
+    Args:
+        model: Trained TwoHeadGRU model
+        dataset: Dataset (regular or SequenceDataset)
+        normalizer_1d: Normalizer for 1D nodes
+        normalizer_2d: Normalizer for 2D nodes
+        save_path: Path to save CSV file
+        water_level_idx: Index of water level feature in input
+        batch_size: Batch size for inference (only for data loading)
+        device: Device to run on
+        initial_ground_truth_steps: How many initial steps use GT before pure AR
+        max_ar_steps: Optional limit on predictions per sequence (None = no limit)
+        use_sequence_dataset: Set True if dataset is SequenceDataset
+    """
+    model.eval()
+
+    print("\nGenerating AUTOREGRESSIVE predictions for all timesteps...")
+    print(f"  Device: {device}")
+    print(f"  Water level index: {water_level_idx}")
+    print(f"  Initial ground truth steps: {initial_ground_truth_steps}")
+    print(
+        f"  Max AR steps per sequence: {max_ar_steps if max_ar_steps else 'unlimited (predict all)'}"
+    )
+    print(f"  Using SequenceDataset: {use_sequence_dataset}")
+
+    rows = []
+
+    if use_sequence_dataset:
+        # ================================================================
+        # SEQUENCE DATASET MODE (Pre-organized sequences)
+        # ================================================================
+        print("\n  Using pre-organized SequenceDataset...")
+        print(f"  Total sequences: {len(dataset)}")
+
+        sample_idx = 0
+        total_predictions = 0
+
+        for seq_idx in range(len(dataset)):
+            # Get full sequence
+            X_seq, y_seq, node_type_val, node_id, timesteps, event_id, seq_len = (
+                dataset[seq_idx]
+            )
+
+            # Convert to device
+            X_seq = X_seq.to(device)  # (seq_len, window, features)
+            y_seq = y_seq.to(device)  # (seq_len,)
+            node_type_val = int(node_type_val.item())
+            node_id = int(node_id.item())
+            event_id = int(event_id.item())
+            timesteps = timesteps.numpy()
+
+            # Determine how many steps to predict
+            num_steps = seq_len
+            if max_ar_steps is not None:
+                num_steps = min(num_steps, max_ar_steps)
+
+            if num_steps == 0:
+                continue
+
+            # Get normalizer
+            normalizer = normalizer_1d if node_type_val == 0 else normalizer_2d
+
+            # Initialize with first window
+            X_current = X_seq[0].unsqueeze(0)  # (1, window, features)
+            node_type_tensor = torch.tensor([node_type_val], dtype=torch.long).to(
+                device
+            )
+
+            # Get ground truth targets
+            ground_truth_targets = y_seq[:num_steps].cpu().numpy()
+
+            # Predict through sequence
+            for step in range(num_steps):
+                # Make prediction
+                pred = model(X_current, node_type_tensor)  # (1, 1)
+                pred_value = pred.squeeze().cpu().item()
+
+                # Inverse transform prediction
+                if hasattr(normalizer, "inverse_transform_y"):
+                    pred_original = normalizer.inverse_transform_y(
+                        np.array([[pred_value]])
+                    )[0, 0]
+                elif hasattr(normalizer, "inverse_y"):
+                    pred_original = normalizer.inverse_y(np.array([[pred_value]]))[0, 0]
+                else:
+                    pred_original = pred_value
+
+                # Get ground truth
+                target_normalized = ground_truth_targets[step]
+                if hasattr(normalizer, "inverse_transform_y"):
+                    target_original = normalizer.inverse_transform_y(
+                        np.array([[target_normalized]])
+                    )[0, 0]
+                elif hasattr(normalizer, "inverse_y"):
+                    target_original = normalizer.inverse_y(
+                        np.array([[target_normalized]])
+                    )[0, 0]
+                else:
+                    target_original = target_normalized
+
+                # Save prediction
+                row = {
+                    "sample_idx": sample_idx,
+                    "event_id": event_id,
+                    "node_id": node_id,
+                    "base_timestep": int(timesteps[0]),
+                    "ar_step": step + 1,
+                    "predicted_timestep": int(timesteps[step]),
+                    "node_type": node_type_val,
+                    "target_water_level": float(target_original),
+                    "predicted_water_level": float(pred_original),
+                    "target_water_level_normalized": float(target_normalized),
+                    "predicted_water_level_normalized": float(pred_value),
+                    "used_ground_truth": step < initial_ground_truth_steps,
+                    "is_pure_ar": step >= initial_ground_truth_steps,
+                    "error": float(pred_original - target_original),
+                    "abs_error": float(abs(pred_original - target_original)),
+                    "squared_error": float((pred_original - target_original) ** 2),
+                }
+                rows.append(row)
+                total_predictions += 1
+
+                # Update window for next prediction
+                if step < num_steps - 1:
+                    next_timestep = X_current[:, -1:, :].clone()
+
+                    # Decide whether to use ground truth or prediction
+                    if step < initial_ground_truth_steps - 1 and step + 1 < seq_len:
+                        # Use ground truth from next sample in sequence
+                        gt_water_level = X_seq[step + 1, -1, water_level_idx]
+                        next_timestep[0, 0, water_level_idx] = gt_water_level
+                    else:
+                        # Use prediction (autoregressive mode)
+                        next_timestep[0, 0, water_level_idx] = pred.squeeze()
+
+                    # Slide window
+                    X_current = torch.cat([X_current[:, 1:, :], next_timestep], dim=1)
+
+            sample_idx += 1
+
+            if sample_idx % 100 == 0:
+                print(
+                    f"  Processed {sample_idx}/{len(dataset)} sequences ({total_predictions} predictions)..."
+                )
+
+        print(f"  Completed processing all {len(dataset)} sequences")
+
+    else:
+        # ================================================================
+        # REGULAR DATASET MODE (Group samples internally)
+        # ================================================================
+        loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+
+        print("\n  Organizing data into sequences...")
+
+        all_samples = []
+        for batch_data in loader:
+            X, y, node_type, node_ids, timesteps, event_ids = batch_data
+
+            X_np = X.numpy()
+            y_np = y.numpy()
+            node_type_np = node_type.numpy()
+            node_ids_np = node_ids.numpy()
+            timesteps_np = timesteps.numpy()
+            event_ids_np = event_ids.numpy()
+
+            for i in range(len(X)):
+                all_samples.append(
+                    {
+                        "X": X_np[i],
+                        "y": y_np[i, 0],
+                        "node_type": node_type_np[i],
+                        "node_id": node_ids_np[i],
+                        "timestep": timesteps_np[i],
+                        "event_id": event_ids_np[i],
+                    }
+                )
+
+        print(f"  Collected {len(all_samples)} samples")
+
+        # Group by (event_id, node_id) to get sequences
+        from collections import defaultdict
+
+        sequences = defaultdict(list)
+        for sample in all_samples:
+            key = (sample["event_id"], sample["node_id"])
+            sequences[key].append(sample)
+
+        # Sort each sequence by timestep
+        for key in sequences:
+            sequences[key] = sorted(sequences[key], key=lambda x: x["timestep"])
+
+        print(f"  Organized into {len(sequences)} sequences")
+
+        # Analyze sequence lengths
+        seq_lengths = [len(seq) for seq in sequences.values()]
+        print("  Sequence length stats:")
+        print(
+            f"    Min: {min(seq_lengths)}, Max: {max(seq_lengths)}, Mean: {np.mean(seq_lengths):.1f}"
+        )
+
+        # Process each sequence
+        sample_idx = 0
+        total_predictions = 0
+
+        for (event_id, node_id), seq_samples in sequences.items():
+            # Determine how many steps to predict
+            num_steps = len(seq_samples)
+            if max_ar_steps is not None:
+                num_steps = min(num_steps, max_ar_steps)
+
+            if num_steps == 0:
+                continue
+
+            # Get sequence info
+            first_sample = seq_samples[0]
+            node_type_val = int(first_sample["node_type"])
+            normalizer = normalizer_1d if node_type_val == 0 else normalizer_2d
+
+            # Initialize with first window
+            X_current = (
+                torch.tensor(first_sample["X"], dtype=torch.float32)
+                .unsqueeze(0)
+                .to(device)
+            )
+            node_type_tensor = torch.tensor([node_type_val], dtype=torch.long).to(
+                device
+            )
+
+            # Collect ground truth targets for comparison
+            ground_truth_targets = [seq_samples[i]["y"] for i in range(num_steps)]
+
+            # Perform predictions for all timesteps
+            for step in range(num_steps):
+                # Make prediction
+                pred = model(X_current, node_type_tensor)  # (1, 1)
+                pred_value = pred.squeeze().cpu().item()
+
+                # Inverse transform prediction
+                if hasattr(normalizer, "inverse_transform_y"):
+                    pred_original = normalizer.inverse_transform_y(
+                        np.array([[pred_value]])
+                    )[0, 0]
+                elif hasattr(normalizer, "inverse_y"):
+                    pred_original = normalizer.inverse_y(np.array([[pred_value]]))[0, 0]
+                else:
+                    pred_original = pred_value
+
+                # Get ground truth
+                target_normalized = ground_truth_targets[step]
+                if hasattr(normalizer, "inverse_transform_y"):
+                    target_original = normalizer.inverse_transform_y(
+                        np.array([[target_normalized]])
+                    )[0, 0]
+                elif hasattr(normalizer, "inverse_y"):
+                    target_original = normalizer.inverse_y(
+                        np.array([[target_normalized]])
+                    )[0, 0]
+                else:
+                    target_original = target_normalized
+
+                # Save prediction
+                row = {
+                    "sample_idx": sample_idx,
+                    "event_id": int(event_id),
+                    "node_id": int(node_id),
+                    "base_timestep": int(first_sample["timestep"]),
+                    "ar_step": step + 1,
+                    "predicted_timestep": int(first_sample["timestep"]) + step + 1,
+                    "node_type": node_type_val,
+                    "target_water_level": float(target_original),
+                    "predicted_water_level": float(pred_original),
+                    "target_water_level_normalized": float(target_normalized),
+                    "predicted_water_level_normalized": float(pred_value),
+                    "used_ground_truth": step < initial_ground_truth_steps,
+                    "is_pure_ar": step >= initial_ground_truth_steps,
+                    "error": float(pred_original - target_original),
+                    "abs_error": float(abs(pred_original - target_original)),
+                    "squared_error": float((pred_original - target_original) ** 2),
+                }
+                rows.append(row)
+                total_predictions += 1
+
+                # Update window for next prediction
+                next_timestep = X_current[:, -1:, :].clone()
+
+                # Decide whether to use ground truth or prediction
+                if step < initial_ground_truth_steps - 1 and step + 1 < len(
+                    seq_samples
+                ):
+                    # Use ground truth for warmup period
+                    next_gt_sample = seq_samples[step + 1]
+                    gt_water_level = next_gt_sample["X"][-1, water_level_idx]
+                    next_timestep[0, 0, water_level_idx] = torch.tensor(
+                        gt_water_level, dtype=torch.float32
+                    ).to(device)
+                else:
+                    # Use prediction (autoregressive mode)
+                    next_timestep[0, 0, water_level_idx] = pred.squeeze()
+
+                # Slide window
+                X_current = torch.cat([X_current[:, 1:, :], next_timestep], dim=1)
+
+            sample_idx += 1
+
+            if sample_idx % 100 == 0:
+                print(
+                    f"  Processed {sample_idx}/{len(sequences)} sequences ({total_predictions} predictions)..."
+                )
+
+        print(f"  Completed processing all {len(sequences)} sequences")
+
+    # ================================================================
+    # SAVE AND REPORT RESULTS (Common for both modes)
+    # ================================================================
+    df = pd.DataFrame(rows)
+    df.to_csv(save_path, index=False)
+
+    print(f"\n✓ Saved autoregressive predictions to {save_path}")
+    print(f"  Total predictions: {len(df)}")
+    print(f"  Unique sequences: {df['sample_idx'].nunique()}")
+    print(f"  Unique nodes: {df['node_id'].nunique()}")
+    print(f"  Unique events: {df['event_id'].nunique()}")
+    print(f"  1D predictions: {(df['node_type'] == 0).sum()}")
+    print(f"  2D predictions: {(df['node_type'] == 1).sum()}")
+
+    print("\n  Predictions breakdown:")
+    print(f"    Ground truth warmup steps: {(df['used_ground_truth'] == True).sum()}")
+    print(f"    Pure AR steps: {(df['is_pure_ar'] == True).sum()}")
+
+    # Predictions per sequence statistics
+    preds_per_seq = df.groupby("sample_idx").size()
+    print("\n  Predictions per sequence:")
+    print(
+        f"    Min: {preds_per_seq.min()}, Max: {preds_per_seq.max()}, Mean: {preds_per_seq.mean():.1f}"
+    )
+
+    # Overall performance
+    print("\n  Overall Performance:")
+    print(f"    RMSE: {np.sqrt(df['squared_error'].mean()):.4f}")
+    print(f"    MAE: {df['abs_error'].mean():.4f}")
+    print(f"    Mean Error: {df['error'].mean():.4f}")
+
+    # Performance by warmup vs pure AR
+    df_warmup = df[df["used_ground_truth"] == True]
+    df_pure_ar = df[df["is_pure_ar"] == True]
+
+    if len(df_warmup) > 0:
+        print("\n  Performance (warmup steps with GT in window):")
+        print(f"    RMSE: {np.sqrt(df_warmup['squared_error'].mean()):.4f}")
+        print(f"    MAE: {df_warmup['abs_error'].mean():.4f}")
+        print(f"    Count: {len(df_warmup)}")
+
+    if len(df_pure_ar) > 0:
+        print("\n  Performance (pure AR steps):")
+        print(f"    RMSE: {np.sqrt(df_pure_ar['squared_error'].mean()):.4f}")
+        print(f"    MAE: {df_pure_ar['abs_error'].mean():.4f}")
+        print(f"    Count: {len(df_pure_ar)}")
+
+    # Per node type
+    print("\n  Performance by node type:")
+    for nt in [0, 1]:
+        df_nt = df[df["node_type"] == nt]
+        if len(df_nt) > 0:
+            node_type_name = "1D" if nt == 0 else "2D"
+            print(
+                f"    {node_type_name} RMSE: {np.sqrt(df_nt['squared_error'].mean()):.4f} ({len(df_nt)} predictions)"
+            )
+
+    # Performance by prediction horizon (first 10 steps)
+    print("\n  Performance by prediction step (first 10 steps):")
+    for step in range(1, min(11, df["ar_step"].max() + 1)):
+        df_step = df[df["ar_step"] == step]
+        if len(df_step) > 0:
+            warmup_flag = (
+                " (warmup)" if step <= initial_ground_truth_steps else " (pure AR)"
+            )
+            print(
+                f"    Step {step:2d}{warmup_flag}: RMSE={np.sqrt(df_step['squared_error'].mean()):.4f}, MAE={df_step['abs_error'].mean():.4f} (n={len(df_step)})"
+            )
 
     return df
 

@@ -210,3 +210,6 @@ model2_removed_ghost/*
 model4_removed_ghost/*
 gru_test_predictions.csv
 gru_test_*
+
+baselines/*
+submissions/*

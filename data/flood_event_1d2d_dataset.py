@@ -553,7 +553,7 @@ class FloodEvent1D2DDataset(Dataset):
             "area": lambda: get_cell_area(self.raw_paths[6], perimeter_name=self.perimeter_name),
             "roughness": lambda: get_roughness(self.raw_paths[6], perimeter_name=self.perimeter_name),
             "elevation": lambda: get_cell_elevation(self.raw_paths[3]),
-            "min_elevation": lambda: get_min_elevation(self.raw_paths[3]),
+            # "min_elevation": lambda: get_min_elevation(self.raw_paths[3]),
             "position_x": lambda: get_cell_position_x(self.raw_paths[3]),
             "position_y": lambda: get_cell_position_y(self.raw_paths[3]),
             "aspect": lambda: _get_aspect(self.raw_paths[3], self.raw_paths[5]),
