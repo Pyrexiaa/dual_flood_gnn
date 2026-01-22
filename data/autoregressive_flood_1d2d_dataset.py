@@ -29,13 +29,14 @@ class AutoregressiveFlood1D2DDataset(FloodEvent1D2DDataset):
         event_rollout_trim_end = self.num_label_timesteps # Trim the last timesteps depending on the number of label timesteps
         current_total_ts = 0
         all_event_timesteps = []
-        for event_idx, hec_ras_path in enumerate(self.raw_paths[3:]):
+
+        for event_idx, hec_ras_path in enumerate(self.raw_paths[6:]):
             timesteps = get_event_timesteps(hec_ras_path)
             event_ts_interval = int((timesteps[1] - timesteps[0]).total_seconds())
             assert self.timestep_interval % event_ts_interval == 0, f'Event {self.hec_ras_run_ids[event_idx]} has a timestep interval of {event_ts_interval} seconds, which is not compatible with the dataset timestep interval of {self.timestep_interval} seconds.'
             self._event_base_timestep_interval.append(event_ts_interval)
 
-            water_volume = get_water_volume(hec_ras_path)
+            water_volume = get_water_volume(hec_ras_path, perimeter_name=self.perimeter_name)
             total_water_volume = water_volume.sum(axis=1)
             peak_idx = np.argmax(total_water_volume).item()
             num_timesteps_after_peak = self.time_from_peak // event_ts_interval if self.time_from_peak is not None else 0
@@ -65,8 +66,8 @@ class AutoregressiveFlood1D2DDataset(FloodEvent1D2DDataset):
 
     # =========== get() methods ===========
 
-    def _get_node_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, timestep_idx: int) -> Tensor:
-        '''For edge autoregressive training'''
+    def _get_2d_node_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, timestep_idx: int) -> Tensor:
+        '''For 2D node autoregressive training'''
         ts_data = []
         end_ts = timestep_idx + self.num_label_timesteps
         # Get node features for each timestep in the label horizon
@@ -81,8 +82,8 @@ class AutoregressiveFlood1D2DDataset(FloodEvent1D2DDataset):
         ts_data = torch.stack(ts_data, dim=-1)  # (num_nodes, num_features, num_label_timesteps)
         return ts_data
 
-    def _get_edge_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, timestep_idx: int) -> Tensor:
-        '''For node autoregressive training'''
+    def _get_2d_edge_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, timestep_idx: int) -> Tensor:
+        '''For 2D edge autoregressive training'''
         ts_data = []
         end_ts = timestep_idx + self.num_label_timesteps
         # Get edge features for each timestep in the label horizon
@@ -97,10 +98,52 @@ class AutoregressiveFlood1D2DDataset(FloodEvent1D2DDataset):
         ts_data = torch.stack(ts_data, dim=-1)  # (num_edges, num_features, num_label_timesteps)
         return ts_data
 
-    def _get_timestep_labels(self, node_dynamic_features: ndarray, edge_dynamic_features: ndarray, timestep_idx: int) -> Tuple[Tensor, Tensor]:
+    # --- 1D Methods ---
+    def _get_1d_node_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, timestep_idx: int) -> Tensor:
+        '''For 1D node autoregressive training'''
+        ts_data = []
+        end_ts = timestep_idx + self.num_label_timesteps
+        # Get 1D node features for each timestep in the label horizon
+        for ts_idx in range(timestep_idx, end_ts):
+            if ts_idx >= dynamic_features.shape[0]:
+                raise IndexError(f'Timestep index {ts_idx} out of range for dynamic features with shape {dynamic_features.shape}.')
+
+            ts_dynamic_features = self._get_timestep_dynamic_features(dynamic_features, self.DYNAMIC_1D_NODE_FEATURES, ts_idx)
+            ts_features = self._get_timestep_features(static_features, ts_dynamic_features)
+            ts_data.append(ts_features)
+
+        ts_data = torch.stack(ts_data, dim=-1)  # (num_1d_nodes, num_features, num_label_timesteps)
+        return ts_data
+
+    def _get_1d_edge_timestep_data(self, static_features: ndarray, dynamic_features: ndarray, timestep_idx: int) -> Tensor:
+        '''For 1D edge autoregressive training'''
+        ts_data = []
+        end_ts = timestep_idx + self.num_label_timesteps
+        # Get 1D edge features for each timestep in the label horizon
+        for ts_idx in range(timestep_idx, end_ts):
+            if ts_idx >= dynamic_features.shape[0]:
+                raise IndexError(f'Timestep index {ts_idx} out of range for dynamic features with shape {dynamic_features.shape}.')
+
+            ts_dynamic_features = self._get_timestep_dynamic_features(dynamic_features, self.DYNAMIC_1D_EDGE_FEATURES, ts_idx)
+            ts_features = self._get_timestep_features(static_features, ts_dynamic_features)
+            ts_data.append(ts_features)
+
+        ts_data = torch.stack(ts_data, dim=-1)  # (num_1d_edges, num_features, num_label_timesteps)
+        return ts_data
+
+    def _get_timestep_labels(
+            self, 
+            node_dynamic_features: ndarray, 
+            edge_dynamic_features: ndarray, 
+            node_1d_dynamic_features: ndarray, 
+            edge_1d_dynamic_features: ndarray, 
+            timestep_idx: int
+        ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        '''Get labels for both 2D and 1D nodes and edges'''
         start_label_idx = timestep_idx + 1  # Labels are at the next timestep
         end_label_idx = start_label_idx + self.num_label_timesteps
 
+        # --- 2D Node Labels ---
         label_nodes_idx = self.DYNAMIC_NODE_FEATURES.index(self.NODE_TARGET_FEATURE)
         current_nodes = node_dynamic_features[start_label_idx-1:end_label_idx-1, :, label_nodes_idx]
         next_nodes = node_dynamic_features[start_label_idx:end_label_idx, :, label_nodes_idx]
@@ -108,6 +151,7 @@ class AutoregressiveFlood1D2DDataset(FloodEvent1D2DDataset):
         label_nodes = label_nodes.T[:, None, :] # (num_nodes, 1, num_label_timesteps)
         label_nodes = torch.from_numpy(label_nodes)
 
+        # --- 2D Edge Labels ---
         label_edges_idx = self.DYNAMIC_EDGE_FEATURES.index(self.EDGE_TARGET_FEATURE)
         current_edges = edge_dynamic_features[start_label_idx-1:end_label_idx-1, :, label_edges_idx]
         next_edges = edge_dynamic_features[start_label_idx:end_label_idx, :, label_edges_idx]
@@ -115,9 +159,26 @@ class AutoregressiveFlood1D2DDataset(FloodEvent1D2DDataset):
         label_edges = label_edges.T[:, None, :] # (num_edges, 1, num_label_timesteps)
         label_edges = torch.from_numpy(label_edges)
 
-        return label_nodes, label_edges
+        # --- 1D Node Labels ---
+        label_1d_nodes_idx = self.DYNAMIC_1D_NODE_FEATURES.index(self.NODE_1D_TARGET_FEATURE)
+        current_1d_nodes = node_1d_dynamic_features[start_label_idx-1:end_label_idx-1, :, label_1d_nodes_idx]
+        next_1d_nodes = node_1d_dynamic_features[start_label_idx:end_label_idx, :, label_1d_nodes_idx]
+        label_1d_nodes = next_1d_nodes - current_1d_nodes
+        label_1d_nodes = label_1d_nodes.T[:, None, :] # (num_1d_nodes, 1, num_label_timesteps)
+        label_1d_nodes = torch.from_numpy(label_1d_nodes)
+
+        # --- 1D Edge Labels ---
+        label_1d_edges_idx = self.DYNAMIC_1D_EDGE_FEATURES.index(self.EDGE_1D_TARGET_FEATURE)
+        current_1d_edges = edge_1d_dynamic_features[start_label_idx-1:end_label_idx-1, :, label_1d_edges_idx]
+        next_1d_edges = edge_1d_dynamic_features[start_label_idx:end_label_idx, :, label_1d_edges_idx]
+        label_1d_edges = next_1d_edges - current_1d_edges
+        label_1d_edges = label_1d_edges.T[:, None, :] # (num_1d_edges, 1, num_label_timesteps)
+        label_1d_edges = torch.from_numpy(label_1d_edges)
+
+        return label_nodes, label_edges, label_1d_nodes, label_1d_edges
 
     def _get_global_mass_info_for_timestep(self, node_rainfall_per_ts: ndarray, timestep_idx: int) -> Dict[str, Tensor]:
+        '''Get global mass conservation info for multiple timesteps'''
         end_idx = timestep_idx + self.num_label_timesteps
         non_boundary_nodes_mask = ~self.boundary_condition.boundary_nodes_mask
         total_rainfall = node_rainfall_per_ts[timestep_idx:end_idx, non_boundary_nodes_mask].sum(axis=1)[None, :]
@@ -135,6 +196,7 @@ class AutoregressiveFlood1D2DDataset(FloodEvent1D2DDataset):
         }
 
     def _get_local_mass_info_for_timestep(self, node_rainfall_per_ts: ndarray, timestep_idx: int) -> Dict[str, Tensor]:
+        '''Get local mass conservation info for multiple timesteps'''
         end_ts = timestep_idx + self.num_label_timesteps
         rainfall = node_rainfall_per_ts[timestep_idx:end_ts].T
 

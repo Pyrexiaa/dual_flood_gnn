@@ -158,7 +158,7 @@ class FloodEvent1D2DDataset(Dataset):
         pass
 
     def process(self):
-        self.log_func('Processing Flood Event Dataset...')
+        self.log_func('Processing Flood Event 1D-2D Dataset...')
 
         all_event_timesteps = self._set_event_properties()
 
