@@ -6,7 +6,7 @@ import numpy as np
 import geopandas as gpd
 import pandas as pd
 
-from data import FloodEventDataset
+from data import FloodEvent1D2DDataset
 from data.boundary_condition import BoundaryCondition
 from typing import Literal, List, Tuple
 
@@ -59,7 +59,7 @@ def get_node_df(config: dict, run_id: str, mode: Literal['train', 'test'], no_gh
                                hec_ras_file=hec_ras_file,
                                inflow_boundary_nodes=inflow_boundary_nodes,
                                outflow_boundary_nodes=outflow_boundary_nodes,
-                               saved_npz_file=FloodEventDataset.BOUNDARY_CONDITION_NPZ_FILE)
+                               saved_npz_file=FloodEvent1D2DDataset.BOUNDARY_CONDITION_NPZ_FILE)
         node_df = node_df[~node_df['CC_index'].isin(bc.ghost_nodes)]
 
     return node_df
@@ -87,7 +87,7 @@ def get_edge_df(config: dict, run_id: str, mode: Literal['train', 'test'], no_gh
                                hec_ras_file=hec_ras_file,
                                inflow_boundary_nodes=inflow_boundary_nodes,
                                outflow_boundary_nodes=outflow_boundary_nodes,
-                               saved_npz_file=FloodEventDataset.BOUNDARY_CONDITION_NPZ_FILE)
+                               saved_npz_file=FloodEvent1D2DDataset.BOUNDARY_CONDITION_NPZ_FILE)
         is_ghost_edge = link_df['from_node'].isin(bc.ghost_nodes) | link_df['to_node'].isin(bc.ghost_nodes)
         boundary_nodes = np.concat([np.array(inflow_boundary_nodes), np.array(outflow_boundary_nodes)])
         is_boundary_edge = link_df['from_node'].isin(boundary_nodes) | link_df['to_node'].isin(boundary_nodes)

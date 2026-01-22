@@ -188,3 +188,5 @@ slurm-*.out
 
 # Extra
 _personal_tests.ipynb
+
+kaggle_submissions

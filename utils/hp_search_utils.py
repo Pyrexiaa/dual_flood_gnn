@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import optuna
 
-from data import dataset_factory, FloodEventDataset
+from data import dataset_factory, FloodEvent1D2DDataset
 from models import model_factory
 from models.base_model import BaseModel
 from typing import Dict, List, Tuple, Optional
@@ -87,7 +87,7 @@ def suggest_hyperparamters(trial: optuna.Trial, hyperparameters: Dict, config: D
 
     return updated_config
 
-def load_datasets(group_id: str, config: Dict, logger: Logger) -> Tuple[FloodEventDataset, FloodEventDataset, Optional[FloodEventDataset]]:
+def load_datasets(group_id: str, config: Dict, logger: Logger) -> Tuple[FloodEvent1D2DDataset, FloodEvent1D2DDataset, Optional[FloodEvent1D2DDataset]]:
     train_config = config['training_parameters']
     early_stopping_patience = train_config['early_stopping_patience']
 
@@ -182,13 +182,17 @@ def load_datasets(group_id: str, config: Dict, logger: Logger) -> Tuple[FloodEve
 
     return train_dataset, test_dataset, val_dataset
 
-def load_model(model_name: str, config: Dict, dataset: FloodEventDataset, device: str) -> BaseModel:
+def load_model(model_name: str, config: Dict, dataset: FloodEvent1D2DDataset, device: str) -> BaseModel:
     model_params = config['model_parameters'][model_name]
     base_model_params = {
         'static_node_features': dataset.num_static_node_features,
         'dynamic_node_features': dataset.num_dynamic_node_features,
         'static_edge_features': dataset.num_static_edge_features,
         'dynamic_edge_features': dataset.num_dynamic_edge_features,
+        'static_1d_node_features': dataset.num_static_1d_node_features,
+        'dynamic_1d_node_features': dataset.num_dynamic_1d_node_features,
+        'static_1d_edge_features': dataset.num_static_1d_edge_features,
+        'dynamic_1d_edge_features': dataset.num_dynamic_1d_edge_features,
         'previous_timesteps': dataset.previous_timesteps,
         'device': device,
     }

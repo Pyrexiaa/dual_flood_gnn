@@ -51,22 +51,33 @@ class GlobalMassConservationLoss(Module):
 
         # Get current water inflow (t)
         water_flow = get_orig_water_flow(batch_edge_input, self.normalizer, self.is_normalized)
-        curr_inflow = water_flow[inflow_edges_mask]
-        inflow_node_idxs = edge_index[0, inflow_edges_mask]
-        inflow_batch = batch[inflow_node_idxs]
-        total_inflow = scatter(curr_inflow, inflow_batch, reduce='sum')
+
+        if inflow_edges_mask.sum() > 0:
+            curr_inflow = water_flow[inflow_edges_mask]
+            inflow_node_idxs = edge_index[0, inflow_edges_mask]
+            inflow_batch = batch[inflow_node_idxs]
+            total_inflow = scatter(curr_inflow, inflow_batch, reduce='sum')
+            inflow_volume = total_inflow * self.delta_t
+        else:
+            # No inflow edges - create zero tensor with correct batch size
+            num_graphs = int(batch.max().item()) + 1
+            inflow_volume = torch.zeros(num_graphs, device=batch_node_pred.device, dtype=batch_node_pred.dtype)
 
         # Get current water outflow (t)
-        curr_outflow = water_flow[outflow_edges_mask]
-        outflow_node_idxs = edge_index[1, outflow_edges_mask]
-        outflow_batch = batch[outflow_node_idxs]
-        total_outflow = scatter(curr_outflow, outflow_batch, reduce='sum')
+        if outflow_edges_mask.sum() > 0:
+            curr_outflow = water_flow[outflow_edges_mask]
+            outflow_node_idxs = edge_index[1, outflow_edges_mask]
+            outflow_batch = batch[outflow_node_idxs]
+            total_outflow = scatter(curr_outflow, outflow_batch, reduce='sum')
+            outflow_volume = total_outflow * self.delta_t
+        else:
+            # No outflow edges - create zero tensor with correct batch size
+            num_graphs = int(batch.max().item()) + 1
+            outflow_volume = torch.zeros(num_graphs, device=batch_node_pred.device, dtype=batch_node_pred.dtype)
 
         # Compute Global Mass Conservation
         delta_v = total_next_water_volume - total_water_volume
         rf_volume = total_rainfall
-        inflow_volume = total_inflow * self.delta_t
-        outflow_volume = total_outflow * self.delta_t
 
         global_volume_error = delta_v - inflow_volume + outflow_volume - rf_volume
         if self.mode == 'train':

@@ -7,6 +7,8 @@
 
 . venv/bin/activate
 
+# python test.py --config 'configs/calibration_config_model1_node_only.yaml' --model 'DUALFloodGNNNode1D2D' --model_path 'saved_models/DUALFloodGNNNode1D2D_2026-01-22_03-11-45.pt'
+
 # DUALFloodGNN
 # Base Architecture
 srun python test.py --config 'configs/config.yaml' --model 'DUALFloodGNN' --model_path ''

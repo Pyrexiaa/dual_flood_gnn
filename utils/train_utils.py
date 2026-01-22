@@ -64,8 +64,10 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger = None) -> 
     num_epochs = train_config['num_epochs']
     num_epochs_dyn_loss = train_config['num_epochs_dyn_loss']
     node_loss_weight = loss_func_parameters['node_loss_weight']
+    node_1d_loss_weight = loss_func_parameters['node_1d_loss_weight']
     log(f'Using dynamic loss weight adjustment for the first {num_epochs_dyn_loss}/{num_epochs} epochs')
-    log(f'Applying importance weight of {node_loss_weight} to node prediction loss after scaling')
+    log(f'Applying importance weight of {node_loss_weight} to 2D node prediction loss after scaling')
+    log(f'Applying importance weight of {node_1d_loss_weight} to 1D node prediction loss after scaling')
     base_config = {
         'num_epochs': num_epochs,
         'num_epochs_dyn_loss': num_epochs_dyn_loss,
@@ -73,6 +75,7 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger = None) -> 
         'gradient_clip_value': train_config['gradient_clip_value'],
         'loss_func': loss_func,
         'node_loss_weight': node_loss_weight,
+        'node_1d_loss_weight': node_1d_loss_weight,
         'early_stopping_patience': early_stopping_patience,
     }
     log(f'Using training configuration: {base_config}')

@@ -2,7 +2,7 @@ import os
 import numpy as np
 
 from contextlib import redirect_stdout
-from data import FloodEventDataset
+from data import FloodEvent1D2DDataset
 from testing import EdgeAutoregressiveTester
 from torch import Tensor
 
@@ -12,7 +12,7 @@ class EdgeRegressionTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        ds: FloodEventDataset = self.dataloader.dataset
+        ds: FloodEvent1D2DDataset = self.dataloader.dataset
         self.boundary_edges_mask = ds.boundary_condition.boundary_edges_mask
 
     def train(self):

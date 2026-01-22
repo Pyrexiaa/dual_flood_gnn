@@ -1,6 +1,6 @@
 import torch
 
-from data import FloodEventDataset
+from data import FloodEvent1D2DDataset
 from torch.nn import Module
 from torch import Tensor
 from torch.optim import Optimizer
@@ -12,7 +12,7 @@ from utils.training_stats import TrainingStats
 class BaseTrainer:
     def __init__(self,
                  model: Module,
-                 dataset: FloodEventDataset,
+                 dataset: FloodEvent1D2DDataset,
                  optimizer: Optimizer,
                  loss_func: Callable,
                  node_loss_weight: float = 1.0,
@@ -21,7 +21,7 @@ class BaseTrainer:
                  num_epochs_dyn_loss: int = 10,
                  gradient_clip_value: Optional[float] = None,
                  early_stopping_patience: Optional[int] = None,
-                 val_dataset: Optional[FloodEventDataset] = None,
+                 val_dataset: Optional[FloodEvent1D2DDataset] = None,
                  logger: Logger = None,
                  device: str = 'cpu'):
         self.dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)

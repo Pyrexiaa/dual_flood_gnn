@@ -1,6 +1,6 @@
 from torch import Tensor
 from torch.nn import Module, Sequential, Linear, PReLU, ReLU, \
-    MSELoss, L1Loss, HuberLoss, LayerNorm
+    MSELoss, L1Loss, HuberLoss, LayerNorm, Sigmoid
 from torch_geometric.nn import GCNConv, SAGEConv, GINConv, Sequential as PygSequential
 
 def make_mlp(input_size: int, output_size: int, hidden_size: int = None,
@@ -47,6 +47,8 @@ def get_activation_func(name: str, device: str = 'cpu') -> Module:
         return ReLU()
     if name == 'prelu':
         return PReLU(device=device)
+    if name == 'sigmoid':
+        return Sigmoid()
     raise Exception(f'Activation function {name} is not implemented.')
 
 def get_loss_func(name: str, **loss_func_params) -> Module:

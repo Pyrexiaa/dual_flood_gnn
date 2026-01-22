@@ -6,11 +6,11 @@ from torch import Tensor
 from typing import Tuple
 from typing import Dict
 
-from .flood_event_dataset import FloodEventDataset
+from .flood_event_1d2d_dataset import FloodEvent1D2DDataset
 
 from .hecras_data_retrieval import get_event_timesteps, get_water_volume
 
-class AutoregressiveFloodDataset(FloodEventDataset):
+class AutoregressiveFloodDataset(FloodEvent1D2DDataset):
     def __init__(self,
                  num_label_timesteps: int = 1,
                  *args, **kwargs):

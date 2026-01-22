@@ -16,6 +16,6 @@ def get_orig_water_flow(water_flow: torch.Tensor,
                         normalizer: DatasetNormalizer,
                         is_normalized: bool):
     if is_normalized:
-        water_flow = normalizer.denormalize('face_flow', water_flow)
+        water_flow = normalizer.denormalize('flow', water_flow)
     water_flow = water_flow.squeeze()
     return water_flow

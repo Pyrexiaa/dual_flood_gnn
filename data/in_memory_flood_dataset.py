@@ -9,9 +9,9 @@ from tqdm import tqdm
 from torch_geometric.data import Data
 from typing import List
 
-from .flood_event_dataset import FloodEventDataset
+from .flood_event_1d2d_dataset import FloodEvent1D2DDataset
 
-class InMemoryFloodDataset(FloodEventDataset):
+class InMemoryFloodDataset(FloodEvent1D2DDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.data_list = self.load_to_memory()
@@ -22,8 +22,14 @@ class InMemoryFloodDataset(FloodEventDataset):
         edge_index: ndarray = constant_values['edge_index']
         static_nodes: ndarray = constant_values['static_nodes']
         static_edges: ndarray = constant_values['static_edges']
+        edge_index_1d: ndarray = constant_values['edge_index_1d']
+        static_nodes_1d: ndarray = constant_values['static_nodes_1d']
+        static_edges_1d: ndarray = constant_values['static_edges_1d']
+        edge_index_1d_2d: ndarray = constant_values['edge_index_1d_2d']
 
-        t_edge_index = torch.from_numpy(edge_index.copy())
+        t_2d_edge_index = torch.from_numpy(edge_index.copy())
+        t_1d_edge_index = torch.from_numpy(edge_index_1d.copy())
+        t_1d2d_edge_index = torch.from_numpy(edge_index_1d_2d.copy())
 
         curr_event_idx = -1
         data_list = []
@@ -46,6 +52,8 @@ class InMemoryFloodDataset(FloodEventDataset):
                 event_timesteps: ndarray = dynamic_values['event_timesteps']
                 dynamic_nodes: ndarray = dynamic_values['dynamic_nodes']
                 dynamic_edges: ndarray = dynamic_values['dynamic_edges']
+                dynamic_nodes_1d: ndarray = dynamic_values['dynamic_nodes_1d']
+                dynamic_edges_1d: ndarray = dynamic_values['dynamic_edges_1d']
 
                 # Load physics-informed loss information
                 if self.with_global_mass_loss or self.with_local_mass_loss:
@@ -56,9 +64,11 @@ class InMemoryFloodDataset(FloodEventDataset):
             # Create Data object for timestep
             within_event_idx = idx - start_idx + self.previous_timesteps # First timestep starts at self.previous_timesteps
             timestep = event_timesteps[within_event_idx]
-            node_features = self._get_node_timestep_data(static_nodes, dynamic_nodes, within_event_idx)
-            edge_features = self._get_edge_timestep_data(static_edges, dynamic_edges, within_event_idx)
-            label_nodes, label_edges = self._get_timestep_labels(dynamic_nodes, dynamic_edges, within_event_idx)
+            node_1d_features = self._get_1d_node_timestep_data(static_nodes_1d, dynamic_nodes_1d, within_event_idx)
+            edge_1d_features = self._get_1d_edge_timestep_data(static_edges_1d, dynamic_edges_1d, within_event_idx)
+            node_2d_features = self._get_2d_node_timestep_data(static_nodes, dynamic_nodes, within_event_idx)
+            edge_2d_features = self._get_2d_edge_timestep_data(static_edges, dynamic_edges, within_event_idx)
+            label_2d_nodes, label_2d_edges, label_1d_nodes, label_1d_edges = self._get_timestep_labels(dynamic_nodes, dynamic_edges, dynamic_nodes_1d, dynamic_edges_1d, within_event_idx)
 
             global_mass_info = None
             if self.with_global_mass_loss:
@@ -68,11 +78,17 @@ class InMemoryFloodDataset(FloodEventDataset):
             if self.with_local_mass_loss:
                 local_mass_info = self._get_local_mass_info_for_timestep(node_rainfall_per_ts, within_event_idx)
 
-            data = Data(x=node_features,
-                    edge_index=t_edge_index,
-                    edge_attr=edge_features,
-                    y=label_nodes,
-                    y_edge=label_edges,
+            data = Data(x=node_2d_features,
+                    edge_index=t_2d_edge_index,
+                    edge_attr=edge_2d_features,
+                    y=label_2d_nodes,
+                    y_edge=label_2d_edges,
+                    x_1d=node_1d_features,
+                    edge_1d_index=t_1d_edge_index,
+                    edge_1d_attr=edge_1d_features,
+                    y_1d=label_1d_nodes,
+                    y_1d_edge=label_1d_edges,
+                    edge_1d2d_index=t_1d2d_edge_index,
                     timestep=timestep,
                     global_mass_info=global_mass_info,
                     local_mass_info=local_mass_info)

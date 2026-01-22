@@ -2,7 +2,7 @@ import os
 import numpy as np
 
 from contextlib import redirect_stdout
-from data import FloodEventDataset
+from data import FloodEvent1D2DDataset
 from torch import Tensor
 from testing import NodeAutoregressiveTester
 from utils import physics_utils, train_utils
@@ -13,7 +13,7 @@ class NodeRegressionTrainer(PhysicsInformedTrainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        ds: FloodEventDataset = self.dataloader.dataset
+        ds: FloodEvent1D2DDataset = self.dataloader.dataset
         self.boundary_nodes_mask = ds.boundary_condition.boundary_nodes_mask
 
     def train(self):

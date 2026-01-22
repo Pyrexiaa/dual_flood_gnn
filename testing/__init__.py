@@ -1,15 +1,18 @@
 from .dual_autoregressive_tester import DualAutoregressiveTester
+from .dual_autoregressive_1d2d_tester import DualAutoregressive1D2DTester
 from .dual_regression_tester import DualRegressionTester
 from .edge_autoregressive_tester import EdgeAutoregressiveTester
+from .edge_autoregressive_1d2d_tester import EdgeAutoregressive1D2DTester
 from .edge_regression_tester import EdgeRegressionTester
 from .node_autoregressive_tester import NodeAutoregressiveTester
+from .node_autoregressive_1d2d_tester import NodeAutoregressive1D2DTester
 from .node_regression_tester import NodeRegressionTester
 
 __all__ = [
-    'DualAutoregressiveTester',
+    'DualAutoregressive1D2DTester',
     'DualRegressionTester',
-    'EdgeAutoregressiveTester',
+    'EdgeAutoregressive1D2DTester',
     'EdgeRegressionTester',
-    'NodeAutoregressiveTester',
+    'NodeAutoregressive1D2DTester',
     'NodeRegressionTester',
 ]

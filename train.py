@@ -7,7 +7,7 @@ import random
 
 from argparse import ArgumentParser, Namespace
 from datetime import datetime
-from data import dataset_factory, FloodEventDataset
+from data import dataset_factory, FloodEvent1D2DDataset
 from models import model_factory
 from test import get_test_dataset_config, run_test
 from training import trainer_factory
@@ -24,16 +24,19 @@ def parse_args() -> Namespace:
     parser.add_argument("--debug", type=bool, default=False, help='Add debug messages to output')
     return parser.parse_args()
 
-def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEventDataset, Optional[FloodEventDataset]]:
+def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEvent1D2DDataset, Optional[FloodEvent1D2DDataset]]:
     dataset_parameters = config['dataset_parameters']
     root_dir = dataset_parameters['root_dir']
     train_dataset_parameters = dataset_parameters['training']
     loss_func_parameters = config['loss_func_parameters']
     base_datset_config = {
         'root_dir': root_dir,
-        'nodes_shp_file': dataset_parameters['nodes_shp_file'],
-        'edges_shp_file': dataset_parameters['edges_shp_file'],
-        'dem_file': dataset_parameters['dem_file'],
+        'nodes_2d_shp_file':dataset_parameters['nodes_2d_shp_file'],
+        'edges_2d_shp_file':dataset_parameters['edges_2d_shp_file'],
+        'nodes_1d_shp_file':dataset_parameters['nodes_1d_shp_file'],
+        'edges_1d_shp_file':dataset_parameters['edges_1d_shp_file'],
+        'edges_1d2d_shp_file':dataset_parameters['edges_1d2d_shp_file'],
+        'dem_file':dataset_parameters['dem_file'],
         'features_stats_file': dataset_parameters['features_stats_file'],
         'previous_timesteps': dataset_parameters['previous_timesteps'],
         'normalize': dataset_parameters['normalize'],
@@ -47,6 +50,9 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
         'debug': args.debug,
         'logger': logger,
         'force_reload': True,
+        'save': False,
+        'perimeter_name': dataset_parameters['perimeter_name'],
+        'network_name': dataset_parameters['network_name']
     }
 
     dataset_summary_file = train_dataset_parameters['dataset_summary_file']
@@ -110,10 +116,10 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
 
 def run_train(model: torch.nn.Module,
               model_name: str,
-              train_dataset: FloodEventDataset,
+              train_dataset: FloodEvent1D2DDataset,
               logger: Logger,
               config: Dict,
-              val_dataset: Optional[FloodEventDataset] = None,
+              val_dataset: Optional[FloodEvent1D2DDataset] = None,
               stats_dir: Optional[str] = None,
               model_dir: Optional[str] = None,
               device: str = 'cpu') -> str:
@@ -191,6 +197,10 @@ def main():
             'dynamic_node_features': train_dataset.num_dynamic_node_features,
             'static_edge_features': train_dataset.num_static_edge_features,
             'dynamic_edge_features': train_dataset.num_dynamic_edge_features,
+            'static_1d_node_features': train_dataset.num_static_1d_node_features,
+            'dynamic_1d_node_features': train_dataset.num_dynamic_1d_node_features,
+            'static_1d_edge_features': train_dataset.num_static_1d_edge_features,
+            'dynamic_1d_edge_features': train_dataset.num_dynamic_1d_edge_features,
             'previous_timesteps': train_dataset.previous_timesteps,
             'device': args.device,
         }
@@ -229,9 +239,14 @@ def main():
         dataset_parameters = config['dataset_parameters']
         base_datset_config = {
             'root_dir': dataset_parameters['root_dir'],
-            'nodes_shp_file': dataset_parameters['nodes_shp_file'],
-            'edges_shp_file': dataset_parameters['edges_shp_file'],
+            'nodes_1d_shp_file': dataset_parameters['nodes_1d_shp_file'],
+            'edges_1d_shp_file': dataset_parameters['edges_1d_shp_file'],
+            'nodes_2d_shp_file': dataset_parameters['nodes_2d_shp_file'],
+            'edges_2d_shp_file': dataset_parameters['edges_2d_shp_file'],
+            'edges_1d2d_shp_file': dataset_parameters['edges_1d2d_shp_file'],
             'dem_file': dataset_parameters['dem_file'],
+            'perimeter_name': dataset_parameters['perimeter_name'],
+            'network_name': dataset_parameters['network_name'],
             'features_stats_file': dataset_parameters['features_stats_file'],
             'previous_timesteps': dataset_parameters['previous_timesteps'],
             'normalize': dataset_parameters['normalize'],

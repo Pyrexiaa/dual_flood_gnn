@@ -2,7 +2,7 @@ import os
 import numpy as np
 
 from torch.nn import Module
-from data import FloodEventDataset
+from data import FloodEvent1D2DDataset
 from utils import Logger
 from utils.validation_stats import ValidationStats
 from typing import List, Optional
@@ -10,7 +10,7 @@ from typing import List, Optional
 class BaseTester:
     def __init__(self,
                  model: Module,
-                 dataset: FloodEventDataset,
+                 dataset: FloodEvent1D2DDataset,
                  rollout_start: int = 0,
                  rollout_timesteps: Optional[int] = None,
                  include_physics_loss: bool = True,
