@@ -115,3 +115,37 @@ def get_wl_vol_interp_points_for_cell(cell_idx: int, filepath: str, perimeter_na
     water_level = link_data[:, 0]
     volume = link_data[:, 1]
     return water_level, volume
+
+def get_1d_water_level(filepath: str, network_name: str = 'Base', dtype: np.dtype = np.float32) -> np.ndarray:
+    property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.Pipe Networks.{network_name}.Nodes.Water Surface'
+    data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
+    return data.astype(dtype)
+
+def get_1d_inlet_flow(filepath: str, network_name: str = 'Base', dtype: np.dtype = np.float32) -> np.ndarray:
+    property_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.Pipe Networks.{network_name}.Nodes.Drop Inlet Flow'
+    data = read_hdf_file_as_numpy(filepath=filepath, property_path=property_path)
+    return data.astype(dtype)
+
+def get_1d_velocity(filepath: str, network_name: str = 'Base', dtype: np.dtype = np.float32) -> np.ndarray:
+    base_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.Pipe Networks.{network_name}.Pipes'
+    
+    path_us = f'{base_path}.Vel US'
+    path_ds = f'{base_path}.Vel DS'
+    
+    vel_us = read_hdf_file_as_numpy(filepath=filepath, property_path=path_us).astype(dtype)
+    vel_ds = read_hdf_file_as_numpy(filepath=filepath, property_path=path_ds).astype(dtype)
+    
+    # Calculate average velocity
+    return (vel_us + vel_ds) / 2
+
+def get_1d_flow(filepath: str, network_name: str = 'Base', dtype: np.dtype = np.float32) -> np.ndarray:
+    base_path = f'Results.Unsteady.Output.Output Blocks.Base Output.Unsteady Time Series.Pipe Networks.{network_name}.Pipes'
+    
+    path_us = f'{base_path}.Pipe Flow US'
+    path_ds = f'{base_path}.Pipe Flow DS'
+    
+    flow_us = read_hdf_file_as_numpy(filepath=filepath, property_path=path_us).astype(dtype)
+    flow_ds = read_hdf_file_as_numpy(filepath=filepath, property_path=path_ds).astype(dtype)
+    
+    # Calculate average flow
+    return (flow_us + flow_ds) / 2

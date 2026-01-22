@@ -178,6 +178,10 @@ cython_debug/
 
 # Data
 data/datasets/
+data/Model1/
+data/Model2/
+data/Model3/
+data/Model4/
 logs/
 training_stats/
 saved_models/
@@ -188,5 +192,25 @@ slurm-*.out
 
 # Extra
 _personal_tests.ipynb
+.DS_Store
 
+# Weight files
+*.pt
+*.pkl
+*.zip
+*.parquet
+
+# Experiment files
+Model2_trained/*
+kaggle_submission/*
+
+# Shape files
+model1_removed_ghost/*
+model2_removed_ghost/*
+model4_removed_ghost/*
+gru_test_predictions.csv
+gru_test_*
+
+baselines/*
+submissions/*
 kaggle_submissions

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #SBATCH --job-name=train
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --partition=gpu-long
@@ -6,7 +6,8 @@
 #SBATCH --mem-per-cpu=64000
 #SBATCH --time=1440
 
-. venv/bin/activate
+source ~/anaconda3/etc/profile.d/conda.sh
+conda activate dual_flood_gnn
 
 # DUALFloodGNN
 # Base Architecture
@@ -23,7 +24,14 @@ srun python train.py --config 'configs/calibration_config_model1_node_only.yaml'
 # # Node Prediction
 # srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'GAT'
 # srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'GCN'
+# # Standard GNN Architectures
+# # Node Prediction
+# srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'GAT'
+# srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'GCN'
 
+# # Edge Prediction
+# srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'EdgeGAT'
+# srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'EdgeGCN'
 # # Edge Prediction
 # srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'EdgeGAT'
 # srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'EdgeGCN'
