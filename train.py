@@ -52,7 +52,8 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
         'force_reload': True,
         'save': False,
         'perimeter_name': dataset_parameters['perimeter_name'],
-        'network_name': dataset_parameters['network_name']
+        'network_name': dataset_parameters['network_name'],
+        'model_name': dataset_parameters['model_name'],
     }
 
     dataset_summary_file = train_dataset_parameters['dataset_summary_file']
@@ -247,6 +248,7 @@ def main():
             'dem_file': dataset_parameters['dem_file'],
             'perimeter_name': dataset_parameters['perimeter_name'],
             'network_name': dataset_parameters['network_name'],
+            'model_name': dataset_parameters['model_name'],
             'features_stats_file': dataset_parameters['features_stats_file'],
             'previous_timesteps': dataset_parameters['previous_timesteps'],
             'normalize': dataset_parameters['normalize'],

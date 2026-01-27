@@ -1,10 +1,11 @@
+from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import r2_score
 import torch
 from torch import Tensor
-
+from argparse import ArgumentParser, Namespace
 
 def NSE(pred: Tensor, target: Tensor) -> Tensor:
     """Nash Sutcliffe Efficiency"""
@@ -19,6 +20,20 @@ def calculate_nse_numpy(pred: np.ndarray, target: np.ndarray) -> float:
     target_tensor = torch.from_numpy(target).float()
     return NSE(pred_tensor, target_tensor).item()
 
+def rmse(y_true, y_pred):
+    """Calculate Root Mean Squared Error"""
+    y_true = np.asarray(y_true)
+    y_pred = np.asarray(y_pred)
+    return np.sqrt(np.mean((y_true - y_pred) ** 2))
+
+
+def standardized_rmse(y_true, y_pred, std_dev):
+    """Calculate RMSE standardized by provided standard deviation"""
+    if std_dev == 0 or np.isnan(std_dev):
+        return np.nan
+    
+    rmse_val = rmse(y_true, y_pred)
+    return rmse_val / std_dev
 
 def plot_individual_node_timeseries(
     csv_path="gru_test_predictions_test.csv", num_nodes=10
@@ -34,12 +49,16 @@ def plot_individual_node_timeseries(
     # Load predictions
     df = pd.read_csv(csv_path)
 
+    csv_path_obj = Path(csv_path)
+    parent_dir = csv_path_obj.parent
+    output_path = parent_dir / "individual_node_timeseries.png"
+
     print(f"Total samples: {len(df)}")
     print(f"Columns: {df.columns.tolist()}")
 
     # Separate by node type
-    df_1d = df[df["node_type"] == 0]
-    df_2d = df[df["node_type"] == 1]
+    df_1d = df[df["node_type"] == 1]
+    df_2d = df[df["node_type"] == 2]
 
     print(f"\n1D nodes (type 0): {len(df_1d)} samples")
     print(f"2D nodes (type 1): {len(df_2d)} samples")
@@ -60,6 +79,8 @@ def plot_individual_node_timeseries(
     selected_2d = np.random.choice(
         unique_nodes_2d, min(num_per_type, len(unique_nodes_2d)), replace=False
     )
+    # selected_1d = [65, 114, 16, 141, 156]
+    # selected_2d = [2451, 4102, 2589, 478, 1752]
 
     print(f"\nSelected {len(selected_1d)} random 1D nodes: {selected_1d}")
     print(f"Selected {len(selected_2d)} random 2D nodes: {selected_2d}")
@@ -78,7 +99,10 @@ def plot_individual_node_timeseries(
         ax = axes[idx, 0]
 
         # Get data for this specific node, sorted by timestep
-        node_data = df_1d[df_1d["node_id"] == node_id].sort_values("timestep")
+        node_data = df_1d[df_1d["node_id"] == node_id]
+        first_event = node_data["event_id"].iloc[0]
+        node_data = node_data[node_data["event_id"] == first_event].sort_values("timestep")
+
 
         if len(node_data) > 0:
             timesteps = node_data["timestep"].values
@@ -95,7 +119,7 @@ def plot_individual_node_timeseries(
             )
             ax.plot(
                 timesteps,
-                node_data["predicted_water_level"],
+                node_data["water_level"],
                 label="Prediction",
                 color="red",
                 marker="x",
@@ -108,23 +132,15 @@ def plot_individual_node_timeseries(
             # Calculate metrics for this node
             rmse = np.sqrt(
                 np.mean(
-                    (
-                        node_data["target_water_level"]
-                        - node_data["predicted_water_level"]
-                    )
-                    ** 2
+                    (node_data["target_water_level"] - node_data["water_level"]) ** 2
                 )
             )
             mae = np.mean(
-                np.abs(
-                    node_data["target_water_level"] - node_data["predicted_water_level"]
-                )
+                np.abs(node_data["target_water_level"] - node_data["water_level"])
             )
-            r2 = r2_score(
-                node_data["target_water_level"], node_data["predicted_water_level"]
-            )
+            r2 = r2_score(node_data["target_water_level"], node_data["water_level"])
             nse = calculate_nse_numpy(
-                node_data["predicted_water_level"].values,
+                node_data["water_level"].values,
                 node_data["target_water_level"].values,
             )
 
@@ -154,7 +170,9 @@ def plot_individual_node_timeseries(
         ax = axes[idx, 1]
 
         # Get data for this specific node, sorted by timestep
-        node_data = df_2d[df_2d["node_id"] == node_id].sort_values("timestep")
+        node_data = df_2d[df_2d["node_id"] == node_id]
+        first_event = node_data["event_id"].iloc[0]
+        node_data = node_data[node_data["event_id"] == first_event].sort_values("timestep")
 
         if len(node_data) > 0:
             timesteps = node_data["timestep"].values
@@ -171,7 +189,7 @@ def plot_individual_node_timeseries(
             )
             ax.plot(
                 timesteps,
-                node_data["predicted_water_level"],
+                node_data["water_level"],
                 label="Prediction",
                 color="red",
                 marker="x",
@@ -184,23 +202,15 @@ def plot_individual_node_timeseries(
             # Calculate metrics for this node
             rmse = np.sqrt(
                 np.mean(
-                    (
-                        node_data["target_water_level"]
-                        - node_data["predicted_water_level"]
-                    )
-                    ** 2
+                    (node_data["target_water_level"] - node_data["water_level"]) ** 2
                 )
             )
             mae = np.mean(
-                np.abs(
-                    node_data["target_water_level"] - node_data["predicted_water_level"]
-                )
+                np.abs(node_data["target_water_level"] - node_data["water_level"])
             )
-            r2 = r2_score(
-                node_data["target_water_level"], node_data["predicted_water_level"]
-            )
+            r2 = r2_score(node_data["target_water_level"], node_data["water_level"])
             nse = calculate_nse_numpy(
-                node_data["predicted_water_level"].values,
+                node_data["water_level"].values,
                 node_data["target_water_level"].values,
             )
 
@@ -224,88 +234,8 @@ def plot_individual_node_timeseries(
             )
 
     plt.tight_layout()
-    plt.savefig("individual_node_timeseries.png", dpi=300, bbox_inches="tight")
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print("\n✓ Plot saved as 'individual_node_timeseries.png'")
-    plt.close()
-
-
-def plot_specific_node(csv_path, node_id, save_path=None):
-    """
-    Plot time series for a specific node.
-
-    Args:
-        csv_path: Path to the predictions CSV file
-        node_id: Specific node ID to plot
-        save_path: Optional path to save the figure
-    """
-    df = pd.read_csv(csv_path)
-
-    # Get data for this specific node
-    node_data = df[df["node_id"] == node_id].sort_values("timestep")
-
-    if len(node_data) == 0:
-        print(f"No data found for node_id={node_id}")
-        return
-
-    node_type = node_data["node_type"].iloc[0]
-    node_type_str = "1D" if node_type == 0 else "2D"
-
-    plt.figure(figsize=(12, 6))
-
-    timesteps = node_data["timestep"].values
-    plt.plot(
-        timesteps,
-        node_data["target_water_level"],
-        label="Ground Truth",
-        color="blue",
-        marker="o",
-        linewidth=2.5,
-        markersize=5,
-        alpha=0.8,
-    )
-    plt.plot(
-        timesteps,
-        node_data["predicted_water_level"],
-        label="Prediction",
-        color="red",
-        marker="x",
-        linewidth=2.5,
-        markersize=5,
-        alpha=0.8,
-        linestyle="--",
-    )
-
-    # Calculate metrics
-    rmse = np.sqrt(
-        np.mean(
-            (node_data["target_water_level"] - node_data["predicted_water_level"]) ** 2
-        )
-    )
-    mae = np.mean(
-        np.abs(node_data["target_water_level"] - node_data["predicted_water_level"])
-    )
-    r2 = r2_score(node_data["target_water_level"], node_data["predicted_water_level"])
-    nse = calculate_nse_numpy(
-        node_data["predicted_water_level"].values,
-        node_data["target_water_level"].values,
-    )
-
-    plt.title(
-        f"{node_type_str} Node {node_id} - Water Level Prediction\n"
-        f"RMSE: {rmse:.4f} | MAE: {mae:.4f} | R²: {r2:.4f} | NSE: {nse:.4f}",
-        fontsize=14,
-        fontweight="bold",
-    )
-    plt.xlabel("Timestep", fontsize=12)
-    plt.ylabel("Water Level", fontsize=12)
-    plt.legend(loc="best", fontsize=11)
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-
-    if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        print(f"✓ Plot saved to {save_path}")
-
     plt.close()
 
 
@@ -326,8 +256,8 @@ def analyze_node_statistics(csv_path="gru_test_predictions_test.csv"):
     print(f"Timestep range: {df['timestep'].min()} to {df['timestep'].max()}")
 
     # By node type
-    for node_type in [0, 1]:
-        node_type_str = "1D" if node_type == 0 else "2D"
+    for node_type in [1, 2]:
+        node_type_str = "1D" if node_type == 1 else "2D"
         df_type = df[df["node_type"] == node_type]
 
         print(f"\n{node_type_str} Nodes:")
@@ -344,18 +274,14 @@ def analyze_node_statistics(csv_path="gru_test_predictions_test.csv"):
 
         # AGGREGATED metrics (treating all samples as one pool)
         rmse_agg = np.sqrt(
-            np.mean(
-                (df_type["target_water_level"] - df_type["predicted_water_level"]) ** 2
-            )
+            np.mean((df_type["target_water_level"] - df_type["water_level"]) ** 2)
         )
         mae_agg = np.mean(
-            np.abs(df_type["target_water_level"] - df_type["predicted_water_level"])
+            np.abs(df_type["target_water_level"] - df_type["water_level"])
         )
-        r2_agg = r2_score(
-            df_type["target_water_level"], df_type["predicted_water_level"]
-        )
+        r2_agg = r2_score(df_type["target_water_level"], df_type["water_level"])
         nse_agg = calculate_nse_numpy(
-            df_type["predicted_water_level"].values,
+            df_type["water_level"].values,
             df_type["target_water_level"].values,
         )
 
@@ -378,17 +304,11 @@ def analyze_node_statistics(csv_path="gru_test_predictions_test.csv"):
             # Calculate metrics for this node
             rmse = np.sqrt(
                 np.mean(
-                    (
-                        node_data["target_water_level"]
-                        - node_data["predicted_water_level"]
-                    )
-                    ** 2
+                    (node_data["target_water_level"] - node_data["water_level"]) ** 2
                 )
             )
             mae = np.mean(
-                np.abs(
-                    node_data["target_water_level"] - node_data["predicted_water_level"]
-                )
+                np.abs(node_data["target_water_level"] - node_data["water_level"])
             )
 
             # Only calculate R² and NSE if we have enough samples and variance
@@ -397,10 +317,10 @@ def analyze_node_statistics(csv_path="gru_test_predictions_test.csv"):
                 if target_var > 1e-10:  # Avoid division by zero
                     r2 = r2_score(
                         node_data["target_water_level"],
-                        node_data["predicted_water_level"],
+                        node_data["water_level"],
                     )
                     nse = calculate_nse_numpy(
-                        node_data["predicted_water_level"].values,
+                        node_data["water_level"].values,
                         node_data["target_water_level"].values,
                     )
                 else:
@@ -476,10 +396,14 @@ def plot_per_node_metric_distributions(csv_path="gru_test_predictions_test.csv")
     """
     df = pd.read_csv(csv_path)
 
+    csv_path_obj = Path(csv_path)
+    parent_dir = csv_path_obj.parent
+    output_path = parent_dir / "per_node_metric_distributions.png"
+
     fig, axes = plt.subplots(2, 4, figsize=(18, 10))
 
-    for node_type_idx, node_type in enumerate([0, 1]):
-        node_type_str = "1D" if node_type == 0 else "2D"
+    for node_type_idx, node_type in enumerate([1, 2]):
+        node_type_str = "1D" if node_type == 1 else "2D"
         df_type = df[df["node_type"] == node_type]
 
         per_node_rmse = []
@@ -493,20 +417,14 @@ def plot_per_node_metric_distributions(csv_path="gru_test_predictions_test.csv")
 
             rmse = np.sqrt(
                 np.mean(
-                    (
-                        node_data["target_water_level"]
-                        - node_data["predicted_water_level"]
-                    )
-                    ** 2
+                    (node_data["target_water_level"] - node_data["water_level"]) ** 2
                 )
             )
             mae = np.mean(
-                np.abs(
-                    node_data["target_water_level"] - node_data["predicted_water_level"]
-                )
+                np.abs(node_data["target_water_level"] - node_data["water_level"])
             )
             nse = calculate_nse_numpy(
-                node_data["predicted_water_level"].values,
+                node_data["water_level"].values,
                 node_data["target_water_level"].values,
             )
 
@@ -515,7 +433,7 @@ def plot_per_node_metric_distributions(csv_path="gru_test_predictions_test.csv")
                 if target_var > 1e-10:
                     r2 = r2_score(
                         node_data["target_water_level"],
-                        node_data["predicted_water_level"],
+                        node_data["water_level"],
                     )
                     per_node_r2.append(r2)
 
@@ -680,193 +598,252 @@ def plot_per_node_metric_distributions(csv_path="gru_test_predictions_test.csv")
             )
 
     plt.tight_layout()
-    plt.savefig("per_node_metric_distributions.png", dpi=300, bbox_inches="tight")
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
     print("✓ Metric distributions saved as 'per_node_metric_distributions.png'")
     plt.close()
 
-def explain_nse_calculation(csv_path="gru_test_predictions_test.csv", show_top_contributors=20):
+
+def explain_rmse_calculation(
+    csv_path="gru_test_predictions_test.csv", 
+    show_top_contributors=20,
+    std_dev_dict=None
+):
     """
-    Detailed breakdown of how aggregated NSE achieves high scores despite poor per-node NSE.
-    Shows which nodes contribute most to the numerator and denominator.
+    Detailed breakdown of how hierarchical RMSE is calculated.
+    Shows per-node RMSE, per-event RMSE, and overall metrics.
+    
+    Args:
+        csv_path: Path to predictions CSV file
+        show_top_contributors: Number of nodes to show in detailed breakdown
+        std_dev_dict: Dictionary of standard deviations for standardization
+                     Format: {(model_id, node_type): std_dev}
     """
+    # Default std_dev values from the evaluation script
+    if std_dev_dict is None:
+        std_dev_dict = {
+            (1, 1): 16.877747,  # Model 1, Node type 1
+            (1, 2): 14.378797,  # Model 1, Node type 2
+            (2, 1): 3.191784,   # Model 2, Node type 1
+            (2, 2): 2.727131,   # Model 2, Node type 2
+        }
+    
     df = pd.read_csv(csv_path)
     
-    print("=" * 80)
-    print("DETAILED NSE CALCULATION BREAKDOWN")
-    print("=" * 80)
-    print("\nNSE = 1 - (SS_res / SS_tot)")
-    print("  SS_res = Σ(target - pred)²     (residual sum of squares)")
-    print("  SS_tot = Σ(target - mean)²     (total sum of squares)")
-    print("\nFor AGGREGATED: mean = global mean across all samples")
-    print("For PER-NODE: mean = that node's mean across its timesteps\n")
+    # Check if event_id exists, if not create a single event
+    if 'event_id' not in df.columns:
+        df['event_id'] = 1
+        print("Note: No event_id column found, treating all data as single event\n")
     
-    for node_type in [0, 1]:
-        node_type_str = "1D" if node_type == 0 else "2D"
-        df_type = df[df['node_type'] == node_type]
-        
-        print("=" * 80)
-        print(f"{node_type_str} NODES ANALYSIS")
-        print("=" * 80)
-        
-        # AGGREGATED NSE CALCULATION
-        all_targets = df_type['target_water_level'].values
-        all_preds = df_type['predicted_water_level'].values
-        
-        global_mean = all_targets.mean()
-        ss_res_agg = np.sum((all_targets - all_preds) ** 2)
-        ss_tot_agg = np.sum((all_targets - global_mean) ** 2)
-        nse_agg = 1 - (ss_res_agg / ss_tot_agg)
-        
-        print(f"\n1. AGGREGATED NSE (all {len(all_targets):,} samples pooled):")
-        print(f"   Global mean: {global_mean:.4f}")
-        print(f"   SS_res: {ss_res_agg:.2e}")
-        print(f"   SS_tot: {ss_tot_agg:.2e}")
-        print(f"   NSE: {nse_agg:.4f}")
-        
-        # PER-NODE CONTRIBUTIONS
-        print(f"\n2. PER-NODE BREAKDOWN:")
-        
-        node_contributions = []
-        
-        for node_id in df_type['node_id'].unique():
-            node_data = df_type[df_type['node_id'] == node_id]
-            
-            targets = node_data['target_water_level'].values
-            preds = node_data['predicted_water_level'].values
-            
-            # Per-node NSE (using node's own mean)
-            node_mean = targets.mean()
-            ss_res_node = np.sum((targets - preds) ** 2)
-            ss_tot_node = np.sum((targets - node_mean) ** 2)
-            nse_node = 1 - (ss_res_node / ss_tot_node) if ss_tot_node > 1e-10 else np.nan
-            
-            # Contribution to aggregated calculation (using GLOBAL mean)
-            ss_res_contrib = ss_res_node  # Same as per-node
-            ss_tot_contrib = np.sum((targets - global_mean) ** 2)  # Different!
-            
-            # Variance measures
-            target_variance = np.var(targets)
-            pred_variance = np.var(preds)
-            target_std = np.std(targets)
-            pred_std = np.std(preds)
-            
-            node_contributions.append({
-                'node_id': node_id,
-                'n_samples': len(targets),
-                'node_mean': node_mean,
-                'deviation_from_global': abs(node_mean - global_mean),
-                'target_variance': target_variance,
-                'pred_variance': pred_variance,
-                'target_std': target_std,
-                'pred_std': pred_std,
-                'ss_res_node': ss_res_node,
-                'ss_tot_node': ss_tot_node,
-                'ss_res_contrib': ss_res_contrib,
-                'ss_tot_contrib': ss_tot_contrib,
-                'nse_node': nse_node,
-                'ss_tot_contrib_pct': (ss_tot_contrib / ss_tot_agg) * 100
-            })
-        
-        # Convert to DataFrame for analysis
-        contrib_df = pd.DataFrame(node_contributions)
-        contrib_df = contrib_df.sort_values('ss_tot_contrib_pct', ascending=False)
-        
-        print(f"\n   Total nodes: {len(contrib_df)}")
-        print(f"   Range of node means: {contrib_df['node_mean'].min():.2f} to {contrib_df['node_mean'].max():.2f}")
-        print(f"   Global mean: {global_mean:.2f}")
-        
-        # Show top contributors to SS_tot
-        print(f"\n3. TOP {show_top_contributors} NODES CONTRIBUTING TO HIGH AGGREGATED NSE:")
-        print(f"   (These nodes have water levels far from global mean)")
-        print(f"\n   {'Node':>6} | {'Mean':>8} | {'Δ Global':>8} | {'Var':>8} | {'SS_tot %':>9} | {'NSE_node':>9}")
-        print("   " + "-" * 72)
-        
-        for idx, row in contrib_df.head(show_top_contributors).iterrows():
-            print(f"   {row['node_id']:6.0f} | {row['node_mean']:8.2f} | "
-                  f"{row['deviation_from_global']:8.2f} | {row['target_variance']:8.2f} | "
-                  f"{row['ss_tot_contrib_pct']:8.2f}% | {row['nse_node']:9.4f}")
-        
-        # Cumulative contribution analysis
-        cumsum_pct = contrib_df['ss_tot_contrib_pct'].cumsum()
-        top_10_pct = cumsum_pct.iloc[9] if len(cumsum_pct) > 9 else cumsum_pct.iloc[-1]
-        top_100_pct = cumsum_pct.iloc[99] if len(cumsum_pct) > 99 else cumsum_pct.iloc[-1]
-        
-        print(f"\n4. CUMULATIVE CONTRIBUTION ANALYSIS:")
-        print(f"   Top 10 nodes account for: {top_10_pct:.2f}% of SS_tot")
-        print(f"   Top 100 nodes account for: {top_100_pct:.2f}% of SS_tot")
-        
-        # Variance analysis
-        print(f"\n5. VARIANCE ANALYSIS (Why aggregated NSE is high):")
-        
-        # Between-node variance vs within-node variance
-        between_node_var = np.var(contrib_df['node_mean'].values)
-        avg_within_node_var = contrib_df['target_variance'].mean()
-        
-        print(f"   Between-node variance (variance of node means): {between_node_var:.2f}")
-        print(f"   Average within-node variance: {avg_within_node_var:.2f}")
-        print(f"   Ratio (between/within): {between_node_var / avg_within_node_var if avg_within_node_var > 0 else np.inf:.2f}x")
-        
-        if between_node_var > 10 * avg_within_node_var:
-            print(f"\n   ⚠️  Between-node variance is {between_node_var / avg_within_node_var:.1f}x larger!")
-            print(f"   This means most variance comes from DIFFERENCES BETWEEN NODES,")
-            print(f"   not from TEMPORAL CHANGES WITHIN NODES.")
-            print(f"   Your model learned per-node constants, which captures between-node")
-            print(f"   variance but completely misses temporal dynamics!")
-        
-        # Prediction variance analysis
-        print(f"\n6. PREDICTION VARIANCE (Is model predicting constants?):")
-        
-        low_pred_var_nodes = contrib_df[contrib_df['pred_std'] < 0.1 * contrib_df['target_std']]
-        print(f"   Nodes with pred_std < 10% of target_std: {len(low_pred_var_nodes)} "
-              f"({len(low_pred_var_nodes)/len(contrib_df)*100:.1f}%)")
-        
-        if len(low_pred_var_nodes) > 0.5 * len(contrib_df):
-            print(f"   ⚠️  Over 50% of nodes have nearly constant predictions!")
-            print(f"   This confirms the model is NOT learning temporal patterns.")
-        
-        # Show worst performing nodes
-        print(f"\n7. WORST PERFORMING NODES (lowest per-node NSE):")
-        print(f"\n   {'Node':>6} | {'Mean':>8} | {'Target σ':>9} | {'Pred σ':>9} | {'NSE_node':>9}")
-        print("   " + "-" * 58)
-        
-        worst_nodes = contrib_df.nsmallest(10, 'nse_node')
-        for idx, row in worst_nodes.iterrows():
-            print(f"   {row['node_id']:6.0f} | {row['node_mean']:8.2f} | "
-                  f"{row['target_std']:9.4f} | {row['pred_std']:9.4f} | {row['nse_node']:9.4f}")
-        
-        print(f"\n{'=' * 80}\n")
+    # Check if model_id exists, if not default to 1
+    if 'model_id' not in df.columns:
+        df['model_id'] = 1
+        print("Note: No model_id column found, defaulting to model_id=1\n")
     
-    print("\nKEY INSIGHTS:")
     print("=" * 80)
-    print("1. Aggregated NSE uses GLOBAL MEAN across all nodes")
-    print("   → Nodes far from global mean contribute huge SS_tot values")
-    print("   → These dominate the denominator, making NSE artificially high")
-    print("\n2. Per-node NSE uses EACH NODE'S OWN MEAN")
-    print("   → Only measures temporal prediction within that node")
-    print("   → Reveals the model isn't learning time dynamics")
-    print("\n3. If between-node variance >> within-node variance:")
-    print("   → Aggregated metrics will look good even with constant predictions")
-    print("   → Always use PER-NODE metrics for time series evaluation!")
+    print("HIERARCHICAL RMSE CALCULATION BREAKDOWN")
     print("=" * 80)
+    print("\nCalculation Structure:")
+    print("  1. Per-node RMSE: RMSE for each node within an event")
+    print("  2. Per-event Standardized RMSE: Average of standardized per-node RMSEs")
+    print("  3. Per-model RMSE: Average across all events for each model")
+    print("  4. Final Score: Average across all models")
+    print("\nFormulas:")
+    print("  RMSE = √(mean((y_true - y_pred)²))")
+    print("  Standardized RMSE = RMSE / std_dev")
+    print("  std_dev is specific to (model_id, node_type) combination\n")
+    
+    # Overall statistics
+    print("=" * 80)
+    print("DATASET OVERVIEW")
+    print("=" * 80)
+    print(f"Total samples: {len(df):,}")
+    print(f"Models: {sorted(df['model_id'].unique())}")
+    print(f"Events: {sorted(df['event_id'].unique())}")
+    print(f"Node types: {sorted(df['node_type'].unique())}")
+    print(f"Unique nodes: {df['node_id'].nunique()}")
+    
+    # Process each model
+    model_scores = []
+    
+    for model_id in sorted(df['model_id'].unique()):
+        df_model = df[df['model_id'] == model_id]
+        
+        print("\n" + "=" * 80)
+        print(f"MODEL {model_id} ANALYSIS")
+        print("=" * 80)
+        
+        event_std_rmses = []
+        
+        # Process each event
+        for event_id in sorted(df_model['event_id'].unique()):
+            df_event = df_model[df_model['event_id'] == event_id]
+            
+            print(f"\n--- Event {event_id} (Model {model_id}) ---")
+            print(f"Total samples in event: {len(df_event):,}")
+            
+            # Process each node type
+            node_type_std_rmses = []
+            
+            for node_type in [1, 2]:
+                df_type = df_event[df_event['node_type'] == node_type]
+                
+                if len(df_type) == 0:
+                    continue
+                
+                node_type_str = "1D" if node_type == 1 else "2D"
+                std_dev = std_dev_dict.get((model_id, node_type), np.nan)
+                
+                print(f"\n  {node_type_str} Nodes:")
+                print(f"    Standard deviation: {std_dev:.6f}")
+                print(f"    Total samples: {len(df_type):,}")
+                print(f"    Unique nodes: {df_type['node_id'].nunique()}")
+                
+                # Calculate per-node RMSE
+                node_rmses = []
+                node_std_rmses = []
+                node_details = []
+                
+                for node_id in df_type['node_id'].unique():
+                    node_data = df_type[df_type['node_id'] == node_id]
+                    
+                    if len(node_data) <= 1:
+                        continue
+                    
+                    targets = node_data['target_water_level'].values
+                    preds = node_data['water_level'].values
+                    
+                    # Calculate RMSE for this node
+                    node_rmse = rmse(targets, preds)
+                    node_rmses.append(node_rmse)
+                    
+                    # Calculate standardized RMSE
+                    node_std_rmse = standardized_rmse(targets, preds, std_dev)
+                    if not np.isnan(node_std_rmse):
+                        node_std_rmses.append(node_std_rmse)
+                    
+                    # Collect details
+                    node_details.append({
+                        'node_id': node_id,
+                        'n_samples': len(targets),
+                        'target_mean': targets.mean(),
+                        'pred_mean': preds.mean(),
+                        'target_std': targets.std(),
+                        'pred_std': preds.std(),
+                        'rmse': node_rmse,
+                        'std_rmse': node_std_rmse,
+                        'mae': np.mean(np.abs(targets - preds))
+                    })
+                
+                if node_std_rmses:
+                    # Average standardized RMSE for this node type
+                    avg_std_rmse = np.mean(node_std_rmses)
+                    node_type_std_rmses.append(avg_std_rmse)
+                    
+                    print(f"    Per-node RMSE range: {min(node_rmses):.4f} to {max(node_rmses):.4f}")
+                    print(f"    Per-node Std RMSE range: {min(node_std_rmses):.4f} to {max(node_std_rmses):.4f}")
+                    print(f"    Average Std RMSE for {node_type_str}: {avg_std_rmse:.6f}")
+                    
+                    # Show top contributors (worst performing nodes)
+                    if len(node_details) > 0:
+                        details_df = pd.DataFrame(node_details)
+                        details_df = details_df.sort_values('std_rmse', ascending=False)
+                        
+                        print(f"\n    Top {min(show_top_contributors, len(details_df))} worst performing nodes:")
+                        print(f"    {'Node':>6} | {'Samples':>7} | {'RMSE':>8} | {'Std RMSE':>9} | {'MAE':>8}")
+                        print("    " + "-" * 58)
+                        
+                        for idx, row in details_df.head(show_top_contributors).iterrows():
+                            print(f"    {row['node_id']:6.0f} | {row['n_samples']:7.0f} | "
+                                  f"{row['rmse']:8.4f} | {row['std_rmse']:9.6f} | {row['mae']:8.4f}")
+            
+            # Calculate event-level standardized RMSE
+            if node_type_std_rmses:
+                event_std_rmse = np.mean(node_type_std_rmses)
+                event_std_rmses.append(event_std_rmse)
+                print(f"\n  Event {event_id} Standardized RMSE: {event_std_rmse:.6f}")
+        
+        # Calculate model-level score
+        if event_std_rmses:
+            model_score = np.mean(event_std_rmses)
+            model_scores.append(model_score)
+            
+            print(f"\n{'=' * 80}")
+            print(f"MODEL {model_id} SUMMARY:")
+            print(f"  Events processed: {len(event_std_rmses)}")
+            print(f"  Event Std RMSE range: {min(event_std_rmses):.6f} to {max(event_std_rmses):.6f}")
+            print(f"  Model {model_id} Average Standardized RMSE: {model_score:.6f}")
+            print(f"{'=' * 80}")
+    
+    # Final score
+    if model_scores:
+        final_score = np.mean(model_scores)
+        
+        print("\n" + "=" * 80)
+        print("FINAL SCORE")
+        print("=" * 80)
+        print(f"Number of models: {len(model_scores)}")
+        for i, score in enumerate(model_scores, 1):
+            print(f"Model {i} Standardized RMSE: {score:.6f}")
+        print(f"\nFinal Score (average across models): {final_score:.6f}")
+        print("=" * 80)
+        
+        return final_score
+    else:
+        print("\n⚠️ Could not calculate final score - no valid events processed")
+        return np.nan
 
-if __name__ == "__main__":
-    csv_file = "Model2_trained/gru_test_predictions_test.csv"
+def concatenate_ground_truth(csv_file, gt_file, output_path):
+    ori_file = pd.read_csv(csv_file)
+    gt_file = pd.read_csv(gt_file)
+
+    ori_file["timestep"] = gt_file["timestep"]
+    ori_file["target_water_level"] = gt_file["target_water_level"]
+
+    ori_file.to_csv(output_path)
+
+def parse_args() -> Namespace:
+    parser = ArgumentParser(description="")
+    parser.add_argument(
+        "--input_csv", type=str, required=True, help="Path to model1 and model2 csv file"
+    )
+    parser.add_argument(
+        "--gt_csv", type=str, required=True, help="Path to csv file having ground truth"
+    )
+    parser.add_argument(
+        "--output_csv", type=str, required=True, help="Path to concatenated input and gt csv"
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=("cuda" if torch.cuda.is_available() else "cpu"),
+        help="Device to run on",
+    )
+    return parser.parse_args()
+
+def main():
+    args = parse_args()
+
+    concatenate_ground_truth(
+        args.input_csv, 
+        args.gt_csv, 
+        args.output_csv
+    )
 
     print("Analyzing node-level predictions...")
     print("\n" + "=" * 80)
     print("NODE STATISTICS (Aggregated vs Per-Node)")
     print("=" * 80)
-    analyze_node_statistics(csv_path=csv_file)
+    analyze_node_statistics(csv_path=args.output_csv)
 
     print("\n" + "=" * 80)
     print("PER-NODE METRIC DISTRIBUTIONS")
     print("=" * 80)
-    plot_per_node_metric_distributions(csv_path=csv_file)
+    plot_per_node_metric_distributions(csv_path=args.output_csv)
 
     print("\n" + "=" * 80)
     print("PLOTTING INDIVIDUAL NODE TIME SERIES (10 random nodes)")
     print("=" * 80)
-    plot_individual_node_timeseries(csv_path=csv_file, num_nodes=10)
+    plot_individual_node_timeseries(csv_path=args.output_csv, num_nodes=10)
 
     print("\n" + "=" * 80)
     print("EXAMPLE: Plot a specific node")
@@ -874,6 +851,12 @@ if __name__ == "__main__":
     print("To plot a specific node, use:")
     print("  plot_specific_node('gru_test_predictions_test.csv', node_id=42)")
 
-    explain_nse_calculation(csv_path=csv_file, show_top_contributors=20)
+    explain_rmse_calculation(csv_path=args.output_csv, show_top_contributors=20)
 
     print("\n✓ All visualizations complete!")
+
+
+if __name__ == "__main__":
+    main()
+
+    

@@ -26,7 +26,7 @@ class NodeAutoregressive1D2DTester(Base1D2DTester):
                 is_normalized=self.dataset.is_normalized,
                 delta_t=self.dataset.timestep_interval,
             )
-            self.run_test_for_event(event_idx, validation_stats)
+            self.run_test_for_event(event_idx, validation_stats, f"./kaggle_submissions/{self.dataset.model_name}_{self.dataset.previous_timesteps}")
             validation_stats.print_stats_summary()
             self.events_validation_stats.append(validation_stats)
 
@@ -195,9 +195,6 @@ class NodeAutoregressive1D2DTester(Base1D2DTester):
                 pred = torch.clip(pred, min=0)
                 label = torch.clip(label, min=0)
 
-                pred = pred[self.non_boundary_nodes_mask]
-                label = label[self.non_boundary_nodes_mask]
-
                 # Save 2D predictions
                 if save_predictions:
                     pred_2d_cpu = pred.cpu().numpy().flatten()
@@ -222,6 +219,9 @@ class NodeAutoregressive1D2DTester(Base1D2DTester):
                             }
                         )
                         row_id += 1
+
+                pred = pred[self.non_boundary_nodes_mask]
+                label = label[self.non_boundary_nodes_mask]
 
                 validation_stats.update_stats_for_timestep(
                     pred.cpu(),

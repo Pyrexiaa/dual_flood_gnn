@@ -1,6 +1,6 @@
 dataset_parameters:
   storage_mode: 'memory'                                     # 'memory' or 'disk'. Where to load the dataset
-  root_dir: 'data/datasets'                                  # Path to root directory for the dataset files
+  root_dir: 'data/model1'                                  # Path to root directory for the dataset files
   nodes_1d_shp_file: 'Geometry/Nodes_1D.shp'                 # Filename of shapefile containing node information
   nodes_2d_shp_file: 'Geometry/Nodes_2D.shp'                 # Filename of shapefile containing node information
   edges_1d_shp_file: 'Geometry/Links_1D.shp'                 # Filename of shapefile containing edge information
@@ -9,9 +9,10 @@ dataset_parameters:
   dem_file: 'Geometry/DEM.tif'    
   perimeter_name: 'US Beaver'  
   network_name: 'Base'                                      # Filename of DEM file
+  model_name: 'Model1'
   features_stats_file: 'features_stats.yaml'                 # Filename for the yaml file containing feature statistics (mean, std, min, max). Generated when initializing the dataset
 
-  previous_timesteps: 1                                      # Number of previous timesteps to consider for input features
+  previous_timesteps: 8                                      # Number of previous timesteps to consider for input features
   normalize: True                                            # Whether to normalize features
   timestep_interval: 300                                     # Interval between timesteps in seconds
   spin_up_time: 14400                                       # Spin up time in seconds. Used to trim the beginning of the flood event. Can be defined per Run ID

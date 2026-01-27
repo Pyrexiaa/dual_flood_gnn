@@ -1,23 +1,36 @@
 dataset_parameters:
   storage_mode: 'memory'                                     # 'memory' or 'disk'. Where to load the dataset
-  root_dir: 'data/datasets'                                  # Path to root directory for the dataset files
+  root_dir: 'data/model1'                                  # Path to root directory for the dataset files
   nodes_1d_shp_file: 'Geometry/Nodes_1D.shp'                 # Filename of shapefile containing node information
   nodes_2d_shp_file: 'Geometry/Nodes_2D.shp'                 # Filename of shapefile containing node information
   edges_1d_shp_file: 'Geometry/Links_1D.shp'                 # Filename of shapefile containing edge information
   edges_2d_shp_file: 'Geometry/Links_2D.shp'                 # Filename of shapefile containing edge information
   edges_1d2d_shp_file: 'Geometry/Node1D_to_Node2D_Links.shp' # Filename of shapefile containing edge information
   dem_file: 'Geometry/DEM.tif'    
-  perimeter_name: 'Davis'  
-  network_name: 'Davis'                                      # Filename of DEM file
+  perimeter_name: 'US Beaver'  
+  network_name: 'Base'                                      # Filename of DEM file
+  model_name: 'Model1'
   features_stats_file: 'features_stats.yaml'                 # Filename for the yaml file containing feature statistics (mean, std, min, max). Generated when initializing the dataset
 
-  previous_timesteps: 1                                      # Number of previous timesteps to consider for input features
+  previous_timesteps: 3                                      # Number of previous timesteps to consider for input features
   normalize: True                                            # Whether to normalize features
   timestep_interval: 300                                     # Interval between timesteps in seconds
   spin_up_time: 14400                                       # Spin up time in seconds. Used to trim the beginning of the flood event. Can be defined per Run ID
   time_from_peak: null                                       # Time after peak flow to consider in data in seconds. Used to trim the end of the flood event. Set to null to include the entire event
   inflow_boundary_nodes: null                                # List of inflow boundary node IDs for boundary conditions
-  outflow_boundary_nodes: null
+  outflow_boundary_nodes:                                    # List of outflow boundary node IDs for boundary conditions
+  - 3741
+  - 3742
+  - 3745
+  - 3748
+  - 3749
+  - 3751
+  - 3756
+  - 3757
+  - 3761
+  - 3762
+  - 3763
+  - 3764
 
   training:
     dataset_summary_file: 'train.csv'                        # Filename of csv file containing the list of training flood events (Run IDs and HEC-RAS file paths)
@@ -32,8 +45,8 @@ training_parameters:
   model_dir            : 'saved_models'                      # Path to directory to save trained models
   stats_dir            : 'training_stats'                    # Path to directory to save training statistics
   checkpoint_path      : null                                # Path to load a pre-trained model; If set to null, no pre-trained model is loaded
-  num_epochs           : 300                                # Number of epochs
-  num_epochs_dyn_loss  : 0                                  # Number of epochs to determine loss scaling ratios dynamically. Usually 10 epochs is sufficient
+  num_epochs           : 300                                  # Number of epochs
+  num_epochs_dyn_loss  : 0                               # Number of epochs to determine loss scaling ratios dynamically. Usually 10 epochs is sufficient
   batch_size           : 32                                  # Batch size
   learning_rate        : 0.0001                              # Learning rate
   adam_weight_decay    : 0                                   # Weight decay

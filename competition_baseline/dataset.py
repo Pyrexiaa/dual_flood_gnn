@@ -1,5 +1,7 @@
 from collections import defaultdict
-from typing import Counter
+import pickle
+import signal
+import time
 from constants import FEATURE_NAMES, DYNAMIC_FEATURES, STATIC_FEATURES
 from utils import (
     attach_timestamps,
@@ -14,11 +16,15 @@ from pathlib import Path
 import joblib
 
 
+class TimeoutException(Exception):
+    """Custom exception for timeout handling"""
+
+    pass
+
+
 class JointWaterLevelDataset(Dataset):
     """
-    Optimized Joint 1D + 2D node dataset WITHOUT expensive edge aggregation.
-
-    Assumes edge features are already joined with nodes in the data preprocessing stage.
+    Optimized Joint 1D + 2D node dataset with automatic recovery from stuck events.
     """
 
     def __init__(
@@ -35,6 +41,10 @@ class JointWaterLevelDataset(Dataset):
         separate_static_dynamic=False,
         node_type_filter=None,
         normalizer_save_path=None,
+        event_timeout=600,  # NEW: Timeout per event in seconds (10 minutes default)
+        checkpoint_interval=5,  # NEW: Save checkpoint every N events
+        checkpoint_path="dataset_checkpoint.pkl",  # NEW: Path for checkpoint file
+        resume_from_checkpoint=True,  # NEW: Whether to resume from checkpoint
     ):
         self.window = window
         self.return_sequence = return_sequence
@@ -42,12 +52,23 @@ class JointWaterLevelDataset(Dataset):
         self.verbose = verbose
         self.separate_static_dynamic = separate_static_dynamic
         self.node_type_filter = node_type_filter
+        self.event_timeout = event_timeout
+        self.checkpoint_interval = checkpoint_interval
+        self.checkpoint_path = checkpoint_path
 
-        self.X, self.y, self.y_raw, self.node_type, self.sample_metadata, self.event_ids = [], [], [], [], [], []
+        (
+            self.X,
+            self.y,
+            self.y_raw,
+            self.node_type,
+            self.sample_metadata,
+            self.event_ids,
+        ) = [], [], [], [], [], []
         self.X_static, self.X_dynamic = [], []
         self.samples_after_1d = 0
         self.samples_after_2d = 0
         self.debug_samples = [] if debug else None
+        self.processed_events = set()  # NEW: Track completed events
 
         # Track feature consistency across samples
         self.feature_tracking = {
@@ -71,44 +92,22 @@ class JointWaterLevelDataset(Dataset):
 
         if self.verbose:
             print(f"\n{'=' * 80}")
-            print("INITIALIZING DATASET (OPTIMIZED - NO EDGE AGGREGATION)")
+            print("INITIALIZING DATASET (WITH AUTO-RECOVERY)")
             print(f"{'=' * 80}")
             print(f"Events to process: {len(self.event_dirs)}")
             print(f"Window size: {window}")
             print(f"Max events: {max_events}")
             print(f"Max samples: {max_samples}")
+            print(f"Event timeout: {event_timeout}s")
+            print(f"Checkpoint interval: every {checkpoint_interval} events")
             print(f"Separate static/dynamic: {separate_static_dynamic}")
 
-        # Process events
-        for event_idx, event_dir in enumerate(self.event_dirs):
-            if max_events and event_idx >= max_events:
-                break
-            if self.verbose:
-                print(f"\n{'-' * 80}")
-                print(
-                    f"Processing Event {event_idx + 1}/{len(self.event_dirs)}: {event_dir.name}"
-                )
-                print(f"{'-' * 80}")
+        # NEW: Try to resume from checkpoint
+        if resume_from_checkpoint:
+            self._load_checkpoint()
 
-            samples_before = len(self.X)
-            self._process_event(event_dir, event_idx)
-            samples_after = len(self.X)
-
-            if self.verbose:
-                print(f"\nEvent {event_dir.name} summary:")
-                print(f"  Samples created: {samples_after - samples_before}")
-
-            if max_samples and len(self.X) >= max_samples:
-                self.X = self.X[:max_samples]
-                self.y = self.y[:max_samples]
-                self.y_raw = self.y_raw[:max_samples]
-                self.node_type = self.node_type[:max_samples]
-                if self.separate_static_dynamic:
-                    self.X_static = self.X_static[:max_samples]
-                    self.X_dynamic = self.X_dynamic[:max_samples]
-                if self.debug:
-                    self.debug_samples = self.debug_samples[:max_samples]
-                break
+        # Process events with timeout protection
+        self._process_all_events_with_recovery(max_events, max_samples)
 
         if len(self.X) == 0:
             raise ValueError(
@@ -182,62 +181,224 @@ class JointWaterLevelDataset(Dataset):
                 print(f"  X_static: {self.X_static.shape}")
                 print(f"  X_dynamic: {self.X_dynamic.shape}")
 
-    def _validate_feature_consistency(self):
-        """Validate that all samples have consistent feature dimensions."""
-        if not self.X:
-            return
+        # Clean up checkpoint after successful completion
+        self._remove_checkpoint()
 
-        print(f"\n{'=' * 80}")
-        print("VALIDATING FEATURE CONSISTENCY")
-        print(f"{'=' * 80}")
+    def _save_checkpoint(self):
+        """Save current processing state to disk"""
+        checkpoint = {
+            "X": self.X,
+            "y": self.y,
+            "y_raw": self.y_raw,
+            "node_type": self.node_type,
+            "sample_metadata": self.sample_metadata,
+            "event_ids": self.event_ids,
+            "processed_events": self.processed_events,
+            "samples_after_1d": self.samples_after_1d,
+            "samples_after_2d": self.samples_after_2d,
+            "feature_tracking": self.feature_tracking,
+        }
 
-        if self.return_sequence:
-            shapes = [(x.shape[0], x.shape[1]) for x in self.X]
-        else:
-            shapes = [x.shape[0] for x in self.X]
+        if self.separate_static_dynamic:
+            checkpoint["X_static"] = self.X_static
+            checkpoint["X_dynamic"] = self.X_dynamic
 
-        unique_shapes = set(shapes)
+        if self.debug:
+            checkpoint["debug_samples"] = self.debug_samples
 
-        print(f"Total samples: {len(shapes)}")
-        print(f"Unique shapes: {len(unique_shapes)}")
+        try:
+            with open(self.checkpoint_path, "wb") as f:
+                pickle.dump(checkpoint, f)
+            if self.verbose:
+                print(
+                    f"✓ Checkpoint saved: {len(self.X)} samples, {len(self.processed_events)} events completed"
+                )
+        except Exception as e:
+            print(f"⚠️  Warning: Could not save checkpoint: {e}")
 
-        if len(unique_shapes) == 1:
-            print(f"✓ All samples have consistent shape: {list(unique_shapes)[0]}")
-            print("\nFeature padding analysis:")
-            print(f"  Total feature slots: {len(FEATURE_NAMES)}")
-            return
+    def _load_checkpoint(self):
+        """Load previous processing state from disk"""
+        if not os.path.exists(self.checkpoint_path):
+            if self.verbose:
+                print("No checkpoint found, starting fresh")
+            return False
 
-        # INCONSISTENCY DETECTED
-        print("\n❌ INCONSISTENT SHAPES DETECTED!")
-        print("Expected: All samples should have the same shape")
-        print(f"Found: {len(unique_shapes)} different shapes\n")
+        try:
+            with open(self.checkpoint_path, "rb") as f:
+                checkpoint = pickle.load(f)
 
-        shape_counts = Counter(shapes)
-        print("Shape distribution:")
-        for shape, count in shape_counts.most_common():
-            pct = count / len(shapes) * 100
-            print(f"  {shape}: {count:>7} samples ({pct:>5.1f}%)")
-
-        raise ValueError(
-            f"\nFeature padding failed! All samples should be padded to {len(FEATURE_NAMES)} features."
-        )
-
-    def _print_detailed_shape_analysis(self):
-        """Print detailed analysis when array conversion fails."""
-        print(f"\n{'=' * 80}")
-        print("DETAILED SHAPE ANALYSIS")
-        print(f"{'=' * 80}")
-
-        print("\nFirst 20 sample shapes:")
-        for i, x in enumerate(self.X[:20]):
-            print(
-                f"  Sample {i}: shape={x.shape}, dtype={x.dtype}, node_type={self.node_type[i]}"
+            self.X = checkpoint["X"]
+            self.y = checkpoint["y"]
+            self.y_raw = checkpoint["y_raw"]
+            self.node_type = checkpoint["node_type"]
+            self.sample_metadata = checkpoint["sample_metadata"]
+            self.event_ids = checkpoint["event_ids"]
+            self.processed_events = checkpoint["processed_events"]
+            self.samples_after_1d = checkpoint.get("samples_after_1d", 0)
+            self.samples_after_2d = checkpoint.get("samples_after_2d", 0)
+            self.feature_tracking = checkpoint.get(
+                "feature_tracking",
+                {
+                    "by_sample": [],
+                    "by_node_type": defaultdict(list),
+                    "by_event": defaultdict(list),
+                    "inconsistencies": [],
+                },
             )
 
+            if self.separate_static_dynamic:
+                self.X_static = checkpoint.get("X_static", [])
+                self.X_dynamic = checkpoint.get("X_dynamic", [])
+
+            if self.debug:
+                self.debug_samples = checkpoint.get("debug_samples", [])
+
+            if self.verbose:
+                print(
+                    f"✓ Checkpoint loaded: {len(self.X)} samples, {len(self.processed_events)} events already processed"
+                )
+                if self.processed_events:
+                    print(
+                        f"  Already completed events: {sorted(list(self.processed_events))[:10]}{'...' if len(self.processed_events) > 10 else ''}"
+                    )
+
+            return True
+        except Exception as e:
+            print(f"⚠️  Warning: Could not load checkpoint: {e}")
+            print("   Starting fresh...")
+            return False
+
+    def _remove_checkpoint(self):
+        """Remove checkpoint file after successful completion"""
+        if os.path.exists(self.checkpoint_path):
+            try:
+                os.remove(self.checkpoint_path)
+                if self.verbose:
+                    print(f"✓ Checkpoint file removed: {self.checkpoint_path}")
+            except Exception as e:
+                print(f"⚠️  Warning: Could not remove checkpoint: {e}")
+
+    def _timeout_handler(self, signum, frame):
+        """Signal handler for timeout"""
+        raise TimeoutException()
+
+    def _process_all_events_with_recovery(self, max_events, max_samples):
+        """Process all events with timeout protection and automatic recovery"""
+        events_to_process = (
+            self.event_dirs[:max_events] if max_events else self.event_dirs
+        )
+
+        for event_idx, event_dir in enumerate(events_to_process):
+            event_name = event_dir.name
+
+            # Skip if already processed (from checkpoint)
+            if event_name in self.processed_events:
+                if self.verbose:
+                    print(f"\n⏭️  Skipping already processed: {event_name}")
+                continue
+
+            if self.verbose:
+                print(f"\n{'-' * 80}")
+                print(
+                    f"Processing Event {event_idx + 1}/{len(events_to_process)}: {event_name}"
+                )
+                print(f"{'-' * 80}")
+
+            samples_before = len(self.X)
+
+            # Process event with timeout protection
+            try:
+                # Set alarm for timeout
+                signal.signal(signal.SIGALRM, self._timeout_handler)
+                signal.alarm(self.event_timeout)
+
+                start_time = time.time()
+                self._process_event(event_dir, event_idx)
+                elapsed = time.time() - start_time
+
+                # Cancel alarm on success
+                signal.alarm(0)
+
+                # Mark as completed
+                self.processed_events.add(event_name)
+
+                samples_after = len(self.X)
+                if self.verbose:
+                    print(f"\nEvent {event_name} summary:")
+                    print(f"  Samples created: {samples_after - samples_before}")
+                    print(f"  Processing time: {elapsed:.1f}s")
+
+                # Save checkpoint periodically
+                if (event_idx + 1) % self.checkpoint_interval == 0:
+                    self._save_checkpoint()
+
+            except TimeoutException:
+                signal.alarm(0)  # Cancel alarm
+                print(
+                    f"\n⚠️  TIMEOUT: Event {event_name} exceeded {self.event_timeout}s"
+                )
+                print("   Skipping this event and continuing...")
+                print(f"   Samples before timeout: {len(self.X)}")
+
+                # Save checkpoint to preserve progress
+                self._save_checkpoint()
+                continue
+
+            except KeyboardInterrupt:
+                signal.alarm(0)
+                print("\n\n⚠️  Interrupted by user! Saving checkpoint...")
+                self._save_checkpoint()
+                raise
+
+            except Exception as e:
+                signal.alarm(0)  # Cancel alarm
+                print(f"\n❌ ERROR in event {event_name}: {e}")
+                print("   Skipping this event and continuing...")
+                import traceback
+
+                traceback.print_exc()
+
+                # Save checkpoint to preserve progress
+                self._save_checkpoint()
+                continue
+
+            # Check max_samples limit
+            if max_samples and len(self.X) >= max_samples:
+                if self.verbose:
+                    print(f"\n✓ Reached max_samples limit ({max_samples}), stopping...")
+
+                self.X = self.X[:max_samples]
+                self.y = self.y[:max_samples]
+                self.y_raw = self.y_raw[:max_samples]
+                self.node_type = self.node_type[:max_samples]
+                self.sample_metadata = self.sample_metadata[:max_samples]
+                self.event_ids = self.event_ids[:max_samples]
+
+                if self.separate_static_dynamic:
+                    self.X_static = self.X_static[:max_samples]
+                    self.X_dynamic = self.X_dynamic[:max_samples]
+                if self.debug:
+                    self.debug_samples = self.debug_samples[:max_samples]
+
+                # Truncate feature tracking
+                self.feature_tracking["by_sample"] = self.feature_tracking["by_sample"][
+                    :max_samples
+                ]
+
+                break
+
+        # Final checkpoint save
+        if self.verbose:
+            print(
+                f"\n✓ All events processed. Total events completed: {len(self.processed_events)}"
+            )
+        self._save_checkpoint()
+
     def _process_event(self, event_dir, event_idx):
-        """Process a single event directory - SIMPLIFIED without edge aggregation."""
+        """Process a single event directory - OPTIMIZED with batch operations."""
         static = load_static(os.path.dirname(event_dir))
         dynamic = load_dynamic(event_dir)
+        actual_event_id = int(event_dir.name.replace("event_", "").replace("event", ""))
 
         if self.verbose:
             print(f"\nLoaded data from: {event_dir}")
@@ -258,7 +419,7 @@ class JointWaterLevelDataset(Dataset):
                 node_type=0,
                 node_dyn=dynamic.get("1d_node"),
                 node_static=static.get("1d_node"),
-                event_idx=event_idx,
+                event_id=actual_event_id,
             )
 
             self.samples_after_1d = len(self.X)
@@ -273,7 +434,7 @@ class JointWaterLevelDataset(Dataset):
                 node_type=1,
                 node_dyn=dynamic.get("2d_node"),
                 node_static=static.get("2d_node"),
-                event_idx=event_idx,
+                event_id=actual_event_id,
             )
 
             self.samples_after_2d = len(self.X)
@@ -437,11 +598,18 @@ class JointWaterLevelDataset(Dataset):
                 self.y[idx],
                 self.node_type[idx],
             )
-        
+
         node_type = self.node_type[idx]
         node_id, timestep = self.sample_metadata[idx]
 
-        return self.X[idx], self.y[idx], node_type, node_id, timestep, self.event_ids[idx]
+        return (
+            self.X[idx],
+            self.y[idx],
+            node_type,
+            node_id,
+            timestep,
+            self.event_ids[idx],
+        )
 
     def get_feature_names(self):
         """Return the list of features used in this dataset."""
@@ -515,7 +683,9 @@ class WaterLevelDataset2D(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx):
-        X, y, node_type, node_id, timestep, event_id = self.dataset[idx]  # NEW: Unpack metadata
+        X, y, node_type, node_id, timestep, event_id = self.dataset[
+            idx
+        ]  # NEW: Unpack metadata
         return X, y, node_id, timestep, event_id  # Return metadata
 
 
@@ -523,7 +693,7 @@ class CombinedDataset(Dataset):
     """
     Combines 1D and 2D datasets with consistent feature dimensions.
     """
-    
+
     def __init__(self, dataset_1d, dataset_2d):
         self.dataset_1d = dataset_1d
         self.dataset_2d = dataset_2d
@@ -531,13 +701,13 @@ class CombinedDataset(Dataset):
         # Verify both datasets have same feature dimension
         dim_1d = dataset_1d.dataset.X.shape[-1]
         dim_2d = dataset_2d.dataset.X.shape[-1]
-        
+
         if dim_1d != dim_2d:
             raise ValueError(
                 f"Feature dimension mismatch! 1D: {dim_1d}, 2D: {dim_2d}. "
                 f"Both should be {len(FEATURE_NAMES)} after padding."
             )
-        
+
         self.feature_dim = dim_1d
         print(f"✓ CombinedDataset: Both 1D and 2D have {self.feature_dim} features")
 
@@ -547,20 +717,25 @@ class CombinedDataset(Dataset):
     def __getitem__(self, idx):
         if idx < len(self.dataset_1d):
             # 1D sample
-            X, y, node_id, timestep, event_id = self.dataset_1d[idx]  # NEW: Unpack metadata
+            X, y, node_id, timestep, event_id = self.dataset_1d[
+                idx
+            ]  # NEW: Unpack metadata
             return X, y, torch.tensor(0), node_id, timestep, event_id  # node_type=0
         else:
             # 2D sample
             idx_2d = idx - len(self.dataset_1d)
-            X, y, node_id, timestep, event_id = self.dataset_2d[idx_2d]  # NEW: Unpack metadata
+            X, y, node_id, timestep, event_id = self.dataset_2d[
+                idx_2d
+            ]  # NEW: Unpack metadata
             return X, y, torch.tensor(1), node_id, timestep, event_id  # node_type=1
-        
+
+
 class SequenceDataset(Dataset):
     """
     Dataset that groups consecutive timesteps from the same node into sequences.
     This enables true sequential autoregressive training.
     """
-    
+
     def __init__(self, base_dataset, min_sequence_length=5, max_sequence_length=50):
         """
         Args:
@@ -571,93 +746,101 @@ class SequenceDataset(Dataset):
         self.base_dataset = base_dataset
         self.min_sequence_length = min_sequence_length
         self.max_sequence_length = max_sequence_length
-        
-        print(f"\nCreating SequenceDataset...")
+
+        print("\nCreating SequenceDataset...")
         print(f"  Min sequence length: {min_sequence_length}")
         print(f"  Max sequence length: {max_sequence_length}")
-        
+
         # Group samples by (event_id, node_id)
         self.sequences = self._create_sequences()
-        
+
         print(f"  Created {len(self.sequences)} sequences")
-        seq_lengths = [len(seq['indices']) for seq in self.sequences]
-        print(f"  Sequence lengths - Min: {min(seq_lengths)}, Max: {max(seq_lengths)}, Mean: {np.mean(seq_lengths):.1f}")
-        
+        seq_lengths = [len(seq["indices"]) for seq in self.sequences]
+        print(
+            f"  Sequence lengths - Min: {min(seq_lengths)}, Max: {max(seq_lengths)}, Mean: {np.mean(seq_lengths):.1f}"
+        )
+
         # Analyze by node type
-        node_types = [seq['node_type'] for seq in self.sequences]
+        node_types = [seq["node_type"] for seq in self.sequences]
         num_1d = sum(1 for nt in node_types if nt == 0)
         num_2d = sum(1 for nt in node_types if nt == 1)
-        print(f"  Node type distribution:")
+        print("  Node type distribution:")
         print(f"    1D sequences: {num_1d}")
         print(f"    2D sequences: {num_2d}")
-        
+
         if num_1d == 0:
-            print(f"  ⚠️  WARNING: No 1D sequences found!")
-            print(f"  This might be because:")
-            print(f"    - 1D nodes have fewer than {min_sequence_length} consecutive timesteps")
-            print(f"    - 1D samples are not consecutive in the dataset")
-    
+            print("  ⚠️  WARNING: No 1D sequences found!")
+            print("  This might be because:")
+            print(
+                f"    - 1D nodes have fewer than {min_sequence_length} consecutive timesteps"
+            )
+            print("    - 1D samples are not consecutive in the dataset")
+
     def _create_sequences(self):
         """Group consecutive timesteps into sequences."""
         # Group by (event_id, node_id)
         grouped = defaultdict(list)
-        
+
         # Track statistics
         node_type_counts = defaultdict(int)
-        
+
         for idx in range(len(self.base_dataset)):
             X, y, node_type, node_id, timestep, event_id = self.base_dataset[idx]
-            
+
             node_type_val = int(node_type)
             node_type_counts[node_type_val] += 1
-            
+
             key = (int(event_id), int(node_id))
-            grouped[key].append({
-                'idx': idx,
-                'timestep': int(timestep),
-                'node_type': node_type_val,
-            })
-        
-        print(f"  Total samples by node type:")
+            grouped[key].append(
+                {
+                    "idx": idx,
+                    "timestep": int(timestep),
+                    "node_type": node_type_val,
+                }
+            )
+
+        print("  Total samples by node type:")
         print(f"    1D: {node_type_counts.get(0, 0)}")
         print(f"    2D: {node_type_counts.get(1, 0)}")
         print(f"  Unique (event, node) groups: {len(grouped)}")
-        
+
         # Sort by timestep and create sequences
         sequences = []
         groups_by_node_type = defaultdict(int)
         sequences_created_by_type = defaultdict(int)
         filtered_by_length = defaultdict(int)
-        
+
         for (event_id, node_id), samples in grouped.items():
             # Sort by timestep
-            samples = sorted(samples, key=lambda x: x['timestep'])
-            node_type_val = samples[0]['node_type']
+            samples = sorted(samples, key=lambda x: x["timestep"])
+            node_type_val = samples[0]["node_type"]
             groups_by_node_type[node_type_val] += 1
-            
+
             # Check if timesteps are consecutive
-            timesteps = [s['timestep'] for s in samples]
-            indices = [s['idx'] for s in samples]
-            
+            timesteps = [s["timestep"] for s in samples]
+            indices = [s["idx"] for s in samples]
+
             # Split into consecutive sequences
             current_seq = [indices[0]]
             current_timesteps = [timesteps[0]]
-            
+
             for i in range(1, len(timesteps)):
-                if timesteps[i] == timesteps[i-1] + 1:  # Consecutive
+                if timesteps[i] == timesteps[i - 1] + 1:  # Consecutive
                     current_seq.append(indices[i])
                     current_timesteps.append(timesteps[i])
-                    
+
                     # Check if we've reached max length
                     if len(current_seq) >= self.max_sequence_length:
                         if len(current_seq) >= self.min_sequence_length:
-                            sequences.append({
-                                'indices': current_seq,
-                                'timesteps': current_timesteps,
-                                'event_id': event_id,
-                                'node_id': node_id,
-                                'node_type': node_type_val,
-                            })
+                            sequences.append(
+                                {
+                                    "indices": current_seq,
+                                    "timesteps": current_timesteps,
+                                    "event_id": event_id,
+                                    "node_id": node_id,
+                                    "node_type": node_type_val,
+                                }
+                            )
                             sequences_created_by_type[node_type_val] += 1
                         else:
                             filtered_by_length[node_type_val] += 1
@@ -665,51 +848,55 @@ class SequenceDataset(Dataset):
                         current_timesteps = []
                 else:  # Gap in timesteps, start new sequence
                     if len(current_seq) >= self.min_sequence_length:
-                        sequences.append({
-                            'indices': current_seq,
-                            'timesteps': current_timesteps,
-                            'event_id': event_id,
-                            'node_id': node_id,
-                            'node_type': node_type_val,
-                        })
+                        sequences.append(
+                            {
+                                "indices": current_seq,
+                                "timesteps": current_timesteps,
+                                "event_id": event_id,
+                                "node_id": node_id,
+                                "node_type": node_type_val,
+                            }
+                        )
                         sequences_created_by_type[node_type_val] += 1
                     else:
                         filtered_by_length[node_type_val] += 1
                     current_seq = [indices[i]]
                     current_timesteps = [timesteps[i]]
-            
+
             # Add final sequence
             if len(current_seq) >= self.min_sequence_length:
-                sequences.append({
-                    'indices': current_seq,
-                    'timesteps': current_timesteps,
-                    'event_id': event_id,
-                    'node_id': node_id,
-                    'node_type': node_type_val,
-                })
+                sequences.append(
+                    {
+                        "indices": current_seq,
+                        "timesteps": current_timesteps,
+                        "event_id": event_id,
+                        "node_id": node_id,
+                        "node_type": node_type_val,
+                    }
+                )
                 sequences_created_by_type[node_type_val] += 1
             else:
                 filtered_by_length[node_type_val] += 1
-        
-        print(f"  Groups by node type:")
+
+        print("  Groups by node type:")
         print(f"    1D groups: {groups_by_node_type.get(0, 0)}")
         print(f"    2D groups: {groups_by_node_type.get(1, 0)}")
-        print(f"  Sequences created by node type:")
+        print("  Sequences created by node type:")
         print(f"    1D sequences: {sequences_created_by_type.get(0, 0)}")
         print(f"    2D sequences: {sequences_created_by_type.get(1, 0)}")
         print(f"  Filtered (too short, <{self.min_sequence_length}):")
         print(f"    1D filtered: {filtered_by_length.get(0, 0)}")
         print(f"    2D filtered: {filtered_by_length.get(1, 0)}")
-        
+
         return sequences
-    
+
     def __len__(self):
         return len(self.sequences)
-    
+
     def __getitem__(self, idx):
         """
         Returns a full sequence of consecutive timesteps.
-        
+
         Returns:
             X_seq: (seq_len, window, features) - input windows
             y_seq: (seq_len,) - targets for each step
@@ -720,53 +907,58 @@ class SequenceDataset(Dataset):
             sequence_length: scalar - actual length of sequence
         """
         seq_info = self.sequences[idx]
-        indices = seq_info['indices']
-        
+        indices = seq_info["indices"]
+
         # Gather all samples in sequence
         X_list = []
         y_list = []
-        
+
         for sample_idx in indices:
             X, y, node_type, node_id, timestep, event_id = self.base_dataset[sample_idx]
             X_list.append(X)
             y_list.append(y)
-        
+
         X_seq = torch.stack(X_list)  # (seq_len, window, features)
         y_seq = torch.stack(y_list).squeeze(-1)  # (seq_len,)
-        
+
         return (
             X_seq,
             y_seq,
-            torch.tensor(seq_info['node_type']),
-            torch.tensor(seq_info['node_id']),
-            torch.tensor(seq_info['timesteps']),
-            torch.tensor(seq_info['event_id']),
-            len(indices)  # sequence_length
+            torch.tensor(seq_info["node_type"]),
+            torch.tensor(seq_info["node_id"]),
+            torch.tensor(seq_info["timesteps"]),
+            torch.tensor(seq_info["event_id"]),
+            len(indices),  # sequence_length
         )
-    
+
+
 def collate_sequences(batch):
     """
     Custom collate function to handle variable-length sequences.
     Pads sequences to the same length within a batch.
     """
-    X_seqs, y_seqs, node_types, node_ids, timesteps, event_ids, seq_lengths = zip(*batch)
-    
+    X_seqs, y_seqs, node_types, node_ids, timesteps, event_ids, seq_lengths = zip(
+        *batch
+    )
+
     # Find max sequence length in this batch
     max_len = max(seq_lengths)
     batch_size = len(batch)
     window_size = X_seqs[0].shape[1]
     num_features = X_seqs[0].shape[2]
-    
+
     # Pad sequences
     X_padded = torch.zeros(batch_size, max_len, window_size, num_features)
     y_padded = torch.zeros(batch_size, max_len)
     timesteps_padded = torch.zeros(batch_size, max_len, dtype=torch.long)
-    
-    for i, (X, y, ts, seq_len) in enumerate(zip(X_seqs, y_seqs, timesteps, seq_lengths)):
+
+    for i, (X, y, ts, seq_len) in enumerate(
+        zip(X_seqs, y_seqs, timesteps, seq_lengths)
+    ):
         X_padded[i, :seq_len] = X
         y_padded[i, :seq_len] = y
         timesteps_padded[i, :seq_len] = ts
-    
+
     return (
         X_padded,
         y_padded,
@@ -774,5 +966,5 @@ def collate_sequences(batch):
         torch.stack(node_ids),
         timesteps_padded,
         torch.stack(event_ids),
-        torch.tensor(seq_lengths)
+        torch.tensor(seq_lengths),
     )

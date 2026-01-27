@@ -70,7 +70,8 @@ class FloodEvent1D2DDataset(Dataset):
                  force_reload: bool = False,
                  save: bool = False,
                  perimeter_name: str = 'US Beaver',
-                 network_name: str = 'Base'
+                 network_name: str = 'Base',
+                 model_name: str = 'Model1'
                  ):
         assert mode in ['train', 'test'], f'Invalid mode: {mode}. Must be "train" or "test".'
 
@@ -82,6 +83,7 @@ class FloodEvent1D2DDataset(Dataset):
         self.hec_ras_files, self.hec_ras_run_ids = self._get_hecras_files_from_summary(root_dir, dataset_summary_file)
         self.perimeter_name = perimeter_name
         self.network_name = network_name
+        self.model_name = model_name
         self.nodes_2d_shp_file = nodes_2d_shp_file
         self.edges_2d_shp_file = edges_2d_shp_file
         self.nodes_1d_shp_file = nodes_1d_shp_file
@@ -420,9 +422,9 @@ class FloodEvent1D2DDataset(Dataset):
         # if set(processed_event_info['inflow_boundary_nodes']) != set(self.inflow_boundary_nodes):
         #     self.log_func(f'Previous inflow_boundary_nodes {processed_event_info["inflow_boundary_nodes"]} differs from current {self.inflow_boundary_nodes}. Reprocessing dataset.')
         #     return True
-        if set(processed_event_info['outflow_boundary_nodes']) != set(self.outflow_boundary_nodes):
-            self.log_func(f'Previous outflow_boundary_nodes {processed_event_info["outflow_boundary_nodes"]} differs from current {self.outflow_boundary_nodes}. Reprocessing dataset.')
-            return True
+        # if set(processed_event_info['outflow_boundary_nodes']) != set(self.outflow_boundary_nodes):
+        #     self.log_func(f'Previous outflow_boundary_nodes {processed_event_info["outflow_boundary_nodes"]} differs from current {self.outflow_boundary_nodes}. Reprocessing dataset.')
+        #     return True
         return False
 
     # =========== process() methods ===========

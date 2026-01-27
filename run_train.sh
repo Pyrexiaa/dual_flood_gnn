@@ -9,29 +9,28 @@
 source ~/anaconda3/etc/profile.d/conda.sh
 conda activate dual_flood_gnn
 
-# DUALFloodGNN
-# Base Architecture
-srun python train.py --config 'configs/calibration_config_model1_node_only.yaml' --model 'DUALFloodGNNNode1D2D'
-# srun python train.py --config 'configs/calibration_config_model2_node_only.yaml' --model 'DUALFloodGNNNode1D2D'
+# DUALFloodGNNNode1D2D
+# srun python train.py --config 'configs/model1/config_model1_node_only_1.yaml' --model 'DUALFloodGNNNode1D2D'
+# srun python train.py --config 'configs/model2/config_model1_node_only_1.yaml' --model 'DUALFloodGNNNode1D2D'
+# srun python process_kaggle_submissions.py --model1_test_csv 'data/model1/raw/test.csv' --model2_test_csv 'data/model2/raw/test.csv' --model1_saved_event_dir 'kaggle_submissions/model1_1' --model2_saved_event_dir 'kaggle_submissions/model2_1' --output_file 'kaggle_submissions/node_only_1.csv'
+# srun python visualize.py --input_csv 'kaggle_submissions/node_only_1.csv' --gt_csv 'kaggle_submissions/ground_truth.csv' --output_csv 'kaggle_submissions/node_only_1_gt.csv'
 
+srun python train.py --config 'configs/model1/config_model1_node_only_2.yaml' --model 'DUALFloodGNNNode1D2D'
+srun python train.py --config 'configs/model2/config_model1_node_only_2.yaml' --model 'DUALFloodGNNNode1D2D'
+srun python process_kaggle_submissions.py --model1_test_csv 'data/model1/raw/test.csv' --model2_test_csv 'data/model2/raw/test.csv' --model1_saved_event_dir 'kaggle_submissions/model1_2' --model2_saved_event_dir 'kaggle_submissions/model2_2' --output_file 'kaggle_submissions/node_only_2.csv'
+srun python visualize.py --input_csv 'kaggle_submissions/node_only_2.csv' --gt_csv 'kaggle_submissions/ground_truth.csv' --output_csv 'kaggle_submissions/node_only_2_gt.csv'
 
-# # Physics-Informed Variants
-# srun python train.py --config 'configs/global_loss_config.yaml' --model 'DUALFloodGNN'
-# srun python train.py --config 'configs/local_loss_config.yaml' --model 'DUALFloodGNN'
-# srun python train.py --config 'configs/no_physics_config.yaml' --model 'DUALFloodGNN'
+srun python train.py --config 'configs/model1/config_model1_node_only_3.yaml' --model 'DUALFloodGNNNode1D2D'
+srun python train.py --config 'configs/model2/config_model1_node_only_3.yaml' --model 'DUALFloodGNNNode1D2D'
+srun python process_kaggle_submissions.py --model1_test_csv 'data/model1/raw/test.csv' --model2_test_csv 'data/model2/raw/test.csv' --model1_saved_event_dir 'kaggle_submissions/model1_3' --model2_saved_event_dir 'kaggle_submissions/model2_3' --output_file 'kaggle_submissions/node_only_3.csv'
+srun python visualize.py --input_csv 'kaggle_submissions/node_only_3.csv' --gt_csv 'kaggle_submissions/ground_truth.csv' --output_csv 'kaggle_submissions/node_only_3_gt.csv'
 
-# # Standard GNN Architectures
-# # Node Prediction
-# srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'GAT'
-# srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'GCN'
-# # Standard GNN Architectures
-# # Node Prediction
-# srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'GAT'
-# srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'GCN'
+srun python train.py --config 'configs/model1/config_model1_node_only_4.yaml' --model 'DUALFloodGNNNode1D2D'
+srun python train.py --config 'configs/model2/config_model1_node_only_4.yaml' --model 'DUALFloodGNNNode1D2D'
+srun python process_kaggle_submissions.py --model1_test_csv 'data/model1/raw/test.csv' --model2_test_csv 'data/model2/raw/test.csv' --model1_saved_event_dir 'kaggle_submissions/model1_4' --model2_saved_event_dir 'kaggle_submissions/model2_4' --output_file 'kaggle_submissions/node_only_4.csv'
+srun python visualize.py --input_csv 'kaggle_submissions/node_only_4.csv' --gt_csv 'kaggle_submissions/ground_truth.csv' --output_csv 'kaggle_submissions/node_only_4_gt.csv'
 
-# # Edge Prediction
-# srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'EdgeGAT'
-# srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'EdgeGCN'
-# # Edge Prediction
-# srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'EdgeGAT'
-# srun python train.py --config 'configs/standard_gnn_config.yaml' --model 'EdgeGCN'
+srun python train.py --config 'configs/model1/config_model1_node_only_5.yaml' --model 'DUALFloodGNNNode1D2D'
+srun python train.py --config 'configs/model2/config_model1_node_only_5.yaml' --model 'DUALFloodGNNNode1D2D'
+srun python process_kaggle_submissions.py --model1_test_csv 'data/model1/raw/test.csv' --model2_test_csv 'data/model2/raw/test.csv' --model1_saved_event_dir 'kaggle_submissions/model1_5' --model2_saved_event_dir 'kaggle_submissions/model2_5' --output_file 'kaggle_submissions/node_only_5.csv'
+srun python visualize.py --input_csv 'kaggle_submissions/node_only_5.csv' --gt_csv 'kaggle_submissions/ground_truth.csv' --output_csv 'kaggle_submissions/node_only_5_gt.csv'
