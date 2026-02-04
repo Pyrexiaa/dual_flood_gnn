@@ -12,65 +12,71 @@ from .graphsage import GraphSAGE, EdgeGraphSAGE
 from .dual_flood_gnn import DUALFloodGNN
 from .dual_flood_gnn_1d2d import DUALFloodGNN1D2D
 from .dual_flood_gnn_node_1d2d import DUALFloodGNNNode1D2D
+from .dual_flood_gnn_node_edge_1d2d import DUALFloodGNNNodeEdge1D2D
 from .node_edge_gnn_transformer import NodeEdgeGNNTransformer
 from .node_edge_gnn_attn import NodeEdgeGNNAttn
 from .node_gnn import NodeGNN
 
+
 def model_factory(model_name: str, *args, **kwargs) -> Module:
-    if model_name == 'DUALFloodGNNNode1D2D':
+    if model_name == "DUALFloodGNNNode1D2D":
         return DUALFloodGNNNode1D2D(*args, **kwargs)
-    if model_name == 'DUALFloodGNN':
+    if model_name == "DUALFloodGNNNodeEdge1D2D":
+        return DUALFloodGNNNodeEdge1D2D(*args, **kwargs)
+    if model_name == "DUALFloodGNN":
         # return DUALFloodGNN(*args, **kwargs)
         return DUALFloodGNN1D2D(*args, **kwargs)
-    if model_name == 'EdgeGAT':
+    if model_name == "EdgeGAT":
         return EdgeGAT(*args, **kwargs)
-    if model_name == 'EdgeGCN':
+    if model_name == "EdgeGCN":
         return EdgeGCN(*args, **kwargs)
-    if model_name == 'EdgeGIN':
+    if model_name == "EdgeGIN":
         return EdgeGIN(*args, **kwargs)
-    if model_name == 'EdgeGINE':
+    if model_name == "EdgeGINE":
         return EdgeGINE(*args, **kwargs)
-    if model_name == 'EdgeGraphSAGE':
+    if model_name == "EdgeGraphSAGE":
         return EdgeGraphSAGE(*args, **kwargs)
-    if model_name == 'EdgeGNN':
+    if model_name == "EdgeGNN":
         return EdgeGNN(*args, **kwargs)
-    if model_name == 'GCN':
+    if model_name == "GCN":
         return GCN(*args, **kwargs)
-    if model_name == 'GAT':
+    if model_name == "GAT":
         return GAT(*args, **kwargs)
-    if model_name == 'GIN':
+    if model_name == "GIN":
         return GIN(*args, **kwargs)
-    if model_name == 'GINE':
+    if model_name == "GINE":
         return GINE(*args, **kwargs)
-    if model_name == 'GraphSAGE':
+    if model_name == "GraphSAGE":
         return GraphSAGE(*args, **kwargs)
-    if model_name == 'NodeEdgeGNNAttn':
+    if model_name == "NodeEdgeGNNAttn":
         return NodeEdgeGNNAttn(*args, **kwargs)
-    if model_name == 'NodeEdgeGNNTransformer':
+    if model_name == "NodeEdgeGNNTransformer":
         return NodeEdgeGNNTransformer(*args, **kwargs)
-    if model_name == 'NodeGNN':
+    if model_name == "NodeGNN":
         return NodeGNN(*args, **kwargs)
-    raise ValueError(f'Invalid model name: {model_name}')
+    raise ValueError(f"Invalid model name: {model_name}")
+
 
 __all__ = [
-    'BaseModel',
-    'BaseNodeModel',
-    'BaseEdgeModel',
-    'DUALFloodGNN',
-    'DUALFloodGNNNode1D2D'
-    'EdgeGAT',
-    'EdgeGCN',
-    'EdgeGIN',
-    'EdgeGINE',
-    'EdgeGraphSAGE',
-    'EdgeGNN',
-    'GAT',
-    'GCN',
-    'GIN',
-    'GINE',
-    'GraphSAGE',
-    'NodeEdgeGNNAttn',
-    'NodeEdgeGNNTransformer',
-    'NodeGNN',
-    'model_factory',
+    "BaseModel",
+    "BaseNodeModel",
+    "BaseEdgeModel",
+    "DUALFloodGNN",
+    "DUALFloodGNNNode1D2D",
+    "DUALFloodGNNNodeEdge1D2D",
+    "EdgeGAT",
+    "EdgeGCN",
+    "EdgeGIN",
+    "EdgeGINE",
+    "EdgeGraphSAGE",
+    "EdgeGNN",
+    "GAT",
+    "GCN",
+    "GIN",
+    "GINE",
+    "GraphSAGE",
+    "NodeEdgeGNNAttn",
+    "NodeEdgeGNNTransformer",
+    "NodeGNN",
+    "model_factory",
 ]
