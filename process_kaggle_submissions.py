@@ -152,14 +152,16 @@ def check_and_concatenate_events(
     # Set row_id as index
     combined_df.set_index("row_id", inplace=True)
 
+    combined_df_rearranged = rearrange_by_node(combined_df)
+
     # Save to output file
-    combined_df.to_csv(output_file)
+    combined_df_rearranged.to_csv(output_file)
 
     print(f"\n✓ Successfully concatenated {len(dfs)} files")
-    print(f"✓ Total rows: {len(combined_df)}")
+    print(f"✓ Total rows: {len(combined_df_rearranged)}")
     print(f"✓ Output saved to: {output_file}")
 
-    return combined_df
+    return combined_df_rearranged
 
 
 def check_timesteps_per_node(csv_file):
@@ -285,7 +287,7 @@ def get_timestep_summary(csv_file):
     print("=" * 80)
 
 
-def rearrange_by_node(csv_file, output_file=None, verbose=True, include_gt=True):
+def rearrange_by_node(csv_file, output_file=None, verbose=True, include_gt=False):
     """
     Rearrange CSV by sorting on model_id, event_id, node_type, node_id, row_id.
     This groups all rows for the same node together and resets row_id to start from 0.
@@ -608,6 +610,9 @@ def parse_args() -> Namespace:
         "--model2_saved_event_dir", type=str, required=True, help="Path to model2 saved predictions event directory"
     )
     parser.add_argument(
+        "--timestep_to_remove", type=str, required=True, help="Remove the first 10 timesteps, if sliding window length is 1, then 8 of them should be removed. If it's 2, then 7 of them should be removed."
+    )
+    parser.add_argument(
         "--output_file", type=str, required=True, help="Path to concatenated saved predictions"
     )
     parser.add_argument(
@@ -659,11 +664,3 @@ if __name__ == "__main__":
     # # Method 3: Get summary statistics
     # print("Method 3: Summary statistics")
     # get_timestep_summary(csv_file)
-
-    # rearrange_by_node(csv_file, "testttt2.csv")
-
-    # # TODO: For baseline inference
-    # model1_csv = "kaggle_submissions/gru_model1.csv"
-    # model2_csv = "kaggle_submissions/gru_model2.csv"
-    # gru_output = "kaggle_submissions/gru_output_gt.csv"
-    # combine_and_rearrange(model1_csv, model2_csv, gru_output, include_gt=True)
