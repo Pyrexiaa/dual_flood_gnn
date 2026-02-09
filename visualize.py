@@ -1169,7 +1169,7 @@ def parse_args() -> Namespace:
 #     print("\n" + "=" * 80)
 #     print("PLOTTING INDIVIDUAL NODE TIME SERIES (10 random nodes)")
 #     print("=" * 80)
-#     plot_individual_node_timeseries(csv_path=args.output_csv, num_nodes=10)
+#     plot_individual_node_timeseries(csv_path=args.output_csv)
 
 #     print("\n" + "=" * 80)
 #     print("EXAMPLE: Plot a specific node")

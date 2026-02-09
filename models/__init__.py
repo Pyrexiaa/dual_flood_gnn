@@ -13,12 +13,15 @@ from .dual_flood_gnn import DUALFloodGNN
 from .dual_flood_gnn_1d2d import DUALFloodGNN1D2D
 from .dual_flood_gnn_node_1d2d import DUALFloodGNNNode1D2D
 from .dual_flood_gnn_node_edge_1d2d import DUALFloodGNNNodeEdge1D2D
+from .dual_flood_hgnn_1d2d import DUALFloodHGNN1D2D
 from .node_edge_gnn_transformer import NodeEdgeGNNTransformer
 from .node_edge_gnn_attn import NodeEdgeGNNAttn
 from .node_gnn import NodeGNN
 
 
 def model_factory(model_name: str, *args, **kwargs) -> Module:
+    if model_name == 'DUALFloodHGNN1D2D':
+        return DUALFloodHGNN1D2D(*args, **kwargs)
     if model_name == "DUALFloodGNNNode1D2D":
         return DUALFloodGNNNode1D2D(*args, **kwargs)
     if model_name == "DUALFloodGNNNodeEdge1D2D":

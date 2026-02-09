@@ -8,6 +8,7 @@ from .node_autoregressive_tester import NodeAutoregressiveTester
 from .node_autoregressive_1d2d_tester import NodeAutoregressive1D2DTester
 from .node_edge_autoregressive_1d2d_tester import NodeEdgeAutoregressive1D2DTester
 from .node_regression_tester import NodeRegressionTester
+from .heterogenous_autoregressive_1d2d_tester import HeteroNodeEdgeAutoregressive1D2DTester
 
 __all__ = [
     'DualAutoregressive1D2DTester',
@@ -17,4 +18,5 @@ __all__ = [
     'NodeEdgeAutoregressive1D2DTester',
     'NodeAutoregressive1D2DTester',
     'NodeRegressionTester',
+    'HeteroNodeEdgeAutoregressive1D2DTester'
 ]
