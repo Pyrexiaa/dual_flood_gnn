@@ -3,12 +3,13 @@ import traceback
 from testing.dual_autoregressive_1d2d_tester import DualAutoregressive1D2DTester
 from testing.edge_autoregressive_1d2d_tester import EdgeAutoregressive1D2DTester
 from testing.node_autoregressive_1d2d_tester import NodeAutoregressive1D2DTester
+from testing.node_edge_autoregressive_1d2d_tester import NodeEdgeAutoregressive1D2DTester
 import torch
 import os
 import random
 
 from argparse import ArgumentParser, Namespace
-from constants import EDGE_MODELS, NODE_EDGE_MODELS
+from constants import EDGE_MODELS, NODE_EDGE_MODELS, GNN_NODE_EDGE_MODELS
 from data import dataset_factory, FloodEvent1D2DDataset
 from models import model_factory
 from typing import Dict, Optional
@@ -85,6 +86,8 @@ def run_test(
         tester = DualAutoregressive1D2DTester(**tester_params)
     elif model.__class__.__name__ in EDGE_MODELS:
         tester = EdgeAutoregressive1D2DTester(**tester_params)
+    elif model.__class__.__name__ in GNN_NODE_EDGE_MODELS:
+        tester = NodeEdgeAutoregressive1D2DTester(**tester_params)
     else:
         tester = NodeAutoregressive1D2DTester(**tester_params)
     tester.test()

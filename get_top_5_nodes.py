@@ -89,7 +89,7 @@ def composite_oscillation_score(series):
     
     # Weighted combination - PRIORITIZE AMPLITUDE
     score = (
-        0.40 * value_range +              # Total range of values (HIGH WEIGHT)
+        0.90 * value_range +              # Total range of values (HIGH WEIGHT)
         0.25 * std_dev * 5 +               # Variability
         0.15 * mean_abs_change * 10 +     # Average step size
         0.10 * norm_tv * 10 +              # Normalized total variation

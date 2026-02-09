@@ -82,7 +82,7 @@ def plot_individual_node_timeseries(
                 "1d_event_id": 8,
                 "nodes_1d": [9, 4, 12, 0, 11],
                 "2d_event_id": 8,
-                "nodes_2d": [2854, 563, 3412, 2872, 2960],
+                "nodes_2d": [2854, 563, 3668, 3488, 2960],
                 "color": "red",
                 "marker": "x",
                 "linestyle": "--",
@@ -151,6 +151,7 @@ def plot_individual_node_timeseries(
         # ========================
         for row_idx in range(num_rows):
             ax = axes[row_idx, 0]
+            # ax.set_ylim([180, 380])
 
             if row_idx < len(nodes_1d):
                 node_id = nodes_1d[row_idx]
@@ -241,6 +242,7 @@ def plot_individual_node_timeseries(
         # ========================
         for row_idx in range(num_rows):
             ax = axes[row_idx, 1]
+            # ax.set_ylim([290, 360])
 
             if row_idx < len(nodes_2d):
                 node_id = nodes_2d[row_idx]
@@ -908,17 +910,215 @@ def explain_rmse_calculation(
     else:
         print("\n⚠️ Could not calculate final score - no valid events processed")
         return np.nan
+    
+def plot_multi_csv_comparison(
+    csv_paths,
+    csv_labels=None,
+    csv_colors=None,
+    csv_linestyles=None,
+    csv_markers=None,
+):
+    """
+    Compare predictions from multiple CSV files for specific nodes.
+    Creates 3 figures, each comparing 5 different results + ground truth.
+    
+    Args:
+        csv_paths: List of paths to 5 CSV files
+        csv_labels: List of 5 labels for each CSV (default: "Result 1", "Result 2", etc.)
+        csv_colors: List of 5 colors for each CSV (default: red, green, orange, purple, brown)
+        csv_linestyles: List of 5 linestyles (default: '-', '--', '-.', ':', '-')
+        csv_markers: List of 5 markers (default: 'x', '^', 's', 'D', 'v')
+    """
+    
+    # ========================
+    # DEFAULT CONFIGURATION
+    # ========================
+    if len(csv_paths) != 5:
+        raise ValueError(f"Expected 5 CSV paths, got {len(csv_paths)}")
+    
+    if csv_labels is None:
+        csv_labels = [f"Result {i+1}" for i in range(5)]
+    
+    if csv_colors is None:
+        csv_colors = ['red', 'green', 'orange', 'purple', 'brown']
+    
+    if csv_linestyles is None:
+        csv_linestyles = ['-', '--', '-.', ':', '-']
+    
+    if csv_markers is None:
+        csv_markers = ['x', '^', 's', 'D', 'v']
+    
+    # Fixed parameters for all plots
+    model_id = 1
+    event_id = 8
+    
+    # Define the 3 nodes to plot
+    nodes_to_plot = [
+        {"node_type": 1, "node_id": 9, "title": "1D Node 9"},
+        {"node_type": 2, "node_id": 2854, "title": "2D Node 2854"},
+        {"node_type": 2, "node_id": 2960, "title": "2D Node 2960"},
+    ]
+    
+    # Output directory (based on first CSV path)
+    csv_path_obj = Path(csv_paths[0])
+    output_dir = csv_path_obj.parent / "multi_csv_comparison_test"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    print(f"\n{'=' * 60}")
+    print(f"Multi-CSV Comparison for Model {model_id}, Event {event_id}")
+    print(f"{'=' * 60}")
+    
+    # Load all CSV files
+    dfs = []
+    for i, csv_path in enumerate(csv_paths):
+        df = pd.read_csv(csv_path)
+        dfs.append(df)
+        print(f"  Loaded {csv_labels[i]}: {len(df)} samples from {csv_path}")
+    
+    # ========================
+    # Create a figure for each node
+    # ========================
+    for node_config in nodes_to_plot:
+        node_type = node_config["node_type"]
+        node_id = node_config["node_id"]
+        node_title = node_config["title"]
+        
+        print(f"\n{'-' * 60}")
+        print(f"Plotting {node_title} (Type {node_type}, ID {node_id})")
+        print(f"{'-' * 60}")
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(14, 6))
+        
+        ground_truth_plotted = False
+        
+        # Plot data from each CSV
+        for i, (df, label, color, linestyle, marker) in enumerate(
+            zip(dfs, csv_labels, csv_colors, csv_linestyles, csv_markers)
+        ):
+            # Get data for this specific node
+            node_data = df[
+                (df["node_id"] == node_id)
+                & (df["model_id"] == model_id)
+                & (df["event_id"] == event_id)
+                & (df["node_type"] == node_type)
+            ].sort_values("timestep")
+            
+            if len(node_data) > 0:
+                timesteps = node_data["timestep"].values
+                
+                # Plot ground truth only once (from first CSV)
+                if not ground_truth_plotted:
+                    ax.plot(
+                        timesteps,
+                        node_data["target_water_level"],
+                        label="Ground Truth",
+                        color="blue",
+                        marker="o",
+                        linewidth=2.5,
+                        markersize=5,
+                        alpha=0.9,
+                        zorder=10,  # Draw on top
+                    )
+                    ground_truth_plotted = True
+                
+                # Plot predictions from this CSV
+                ax.plot(
+                    timesteps,
+                    node_data["water_level"],
+                    label=label,
+                    color=color,
+                    marker=marker,
+                    linewidth=2,
+                    markersize=4,
+                    alpha=0.8,
+                    linestyle=linestyle,
+                )
+                
+                # Calculate metrics for this CSV
+                rmse = np.sqrt(
+                    np.mean(
+                        (node_data["target_water_level"] - node_data["water_level"]) ** 2
+                    )
+                )
+                mae = np.mean(
+                    np.abs(node_data["target_water_level"] - node_data["water_level"])
+                )
+                r2 = r2_score(
+                    node_data["target_water_level"], node_data["water_level"]
+                )
+                
+                print(f"  ✓ {label}: {len(node_data)} timesteps | RMSE: {rmse:.4f} | MAE: {mae:.4f} | R²: {r2:.4f}")
+            else:
+                print(f"  ✗ {label}: No data found")
+        
+        # Set title and labels
+        ax.set_title(
+            f"{node_title} - Model {model_id}, Event {event_id} - Multi-CSV Comparison",
+            fontsize=13,
+            fontweight="bold",
+            pad=15,
+        )
+        ax.set_xlabel("Timestep", fontsize=11)
+        ax.set_ylabel("Water Level", fontsize=11)
+        
+        # Legend with better positioning
+        ax.legend(
+            loc="best",
+            fontsize=10,
+            framealpha=0.9,
+            edgecolor='black',
+        )
+        
+        ax.grid(True, alpha=0.3, linestyle='--')
+        
+        # Optional: Uncomment to set y-axis limits
+        # if node_type == 1:
+        #     ax.set_ylim([180, 380])
+        # else:
+        #     ax.set_ylim([290, 360])
+        
+        # Save figure
+        output_filename = f"comparison_model{model_id}_event{event_id}_type{node_type}_node{node_id}.png"
+        output_path = output_dir / output_filename
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        print(f"  ✓ Saved: {output_path}")
+        plt.close()
+    
+    print(f"\n{'=' * 60}")
+    print(f"All comparison plots completed!")
+    print(f"Output directory: {output_dir}")
+    print(f"{'=' * 60}")
 
 
 def concatenate_ground_truth(csv_file, gt_file, output_path):
-    ori_file = pd.read_csv(csv_file)
-    gt_file = pd.read_csv(gt_file)
-
-    ori_file["timestep"] = gt_file["timestep"]
-    ori_file["target_water_level"] = gt_file["target_water_level"]
-
-    ori_file.to_csv(output_path)
-
+    """
+    Concatenate ground truth data to predictions file.
+    Handles both CSV and Parquet formats for input files.
+    Always saves output as CSV.
+    
+    Args:
+        csv_file: Path to original predictions file (CSV or Parquet)
+        gt_file: Path to ground truth file (CSV or Parquet)
+        output_path: Path to save the combined CSV file
+    """
+    if csv_file.endswith('.parquet'):
+        ori_file = pd.read_parquet(csv_file)
+    else:
+        ori_file = pd.read_csv(csv_file)
+    
+    if gt_file.endswith('.parquet'):
+        gt_file_data = pd.read_parquet(gt_file)
+    else:
+        gt_file_data = pd.read_csv(gt_file)
+    
+    ori_file["timestep"] = gt_file_data["timestep"]
+    ori_file["target_water_level"] = gt_file_data["target_water_level"]
+    
+    ori_file.to_csv(output_path, index=False)
+    print(f"✓ Saved combined data to {output_path}")
 
 def parse_args() -> Namespace:
     parser = ArgumentParser(description="")
@@ -946,78 +1146,109 @@ def parse_args() -> Namespace:
     return parser.parse_args()
 
 
-def main():
-    args = parse_args()
-
-    concatenate_ground_truth(
-        args.input_csv,
-        args.gt_csv,
-        args.output_csv
-    )
-
-    print("Analyzing node-level predictions...")
-    print("\n" + "=" * 80)
-    print("NODE STATISTICS (Aggregated vs Per-Node)")
-    print("=" * 80)
-    analyze_node_statistics(csv_path=args.output_csv)
-
-    print("\n" + "=" * 80)
-    print("PER-NODE METRIC DISTRIBUTIONS")
-    print("=" * 80)
-    plot_per_node_metric_distributions(csv_path=args.output_csv)
-
-    print("\n" + "=" * 80)
-    print("PLOTTING INDIVIDUAL NODE TIME SERIES (10 random nodes)")
-    print("=" * 80)
-    plot_individual_node_timeseries(csv_path=args.output_csv, num_nodes=10)
-
-    print("\n" + "=" * 80)
-    print("EXAMPLE: Plot a specific node")
-    print("=" * 80)
-    print("To plot a specific node, use:")
-    print("  plot_specific_node('gru_test_predictions_test.csv', node_id=42)")
-
-    explain_rmse_calculation(csv_path=args.output_csv, show_top_contributors=20)
-
-    print("\n✓ All visualizations complete!")
-
-
 # def main():
-#     input_csv = "kaggle_submissions/gru_output.csv"
-#     gt_csv = "kaggle_submissions/ground_truth.csv"
-#     output_csv = "kaggle_submissions/gru_output_gt.csv"
+#     args = parse_args()
 
 #     concatenate_ground_truth(
-#         input_csv,
-#         gt_csv,
-#         output_csv
+#         args.input_csv,
+#         args.gt_csv,
+#         args.output_csv
 #     )
 
-#     # print("Analyzing node-level predictions...")
-#     # print("\n" + "=" * 80)
-#     # print("NODE STATISTICS (Aggregated vs Per-Node)")
-#     # print("=" * 80)
-#     # analyze_node_statistics(csv_path=output_csv)
+#     print("Analyzing node-level predictions...")
+#     print("\n" + "=" * 80)
+#     print("NODE STATISTICS (Aggregated vs Per-Node)")
+#     print("=" * 80)
+#     analyze_node_statistics(csv_path=args.output_csv)
 
 #     print("\n" + "=" * 80)
 #     print("PER-NODE METRIC DISTRIBUTIONS")
 #     print("=" * 80)
-#     plot_per_node_metric_distributions(csv_path=output_csv)
+#     plot_per_node_metric_distributions(csv_path=args.output_csv)
 
 #     print("\n" + "=" * 80)
 #     print("PLOTTING INDIVIDUAL NODE TIME SERIES (10 random nodes)")
 #     print("=" * 80)
-#     plot_individual_node_timeseries(csv_path=output_csv)
+#     plot_individual_node_timeseries(csv_path=args.output_csv, num_nodes=10)
 
-#     # print("\n" + "=" * 80)
-#     # print("EXAMPLE: Plot a specific node")
-#     # print("=" * 80)
-#     # print("To plot a specific node, use:")
-#     # print("  plot_specific_node('gru_test_predictions_test.csv', node_id=42)")
+#     print("\n" + "=" * 80)
+#     print("EXAMPLE: Plot a specific node")
+#     print("=" * 80)
+#     print("To plot a specific node, use:")
+#     print("  plot_specific_node('gru_test_predictions_test.csv', node_id=42)")
 
-#     # explain_rmse_calculation(csv_path=output_csv, show_top_contributors=20)
+#     explain_rmse_calculation(csv_path=args.output_csv, show_top_contributors=20)
 
 #     print("\n✓ All visualizations complete!")
+
+
+def main():
+    # input_csv = "kaggle_submissions/node_only_8_sorted.csv"
+    # gt_csv = "kaggle_submissions/ground_truth.csv"
+    # output_csv = "kaggle_submissions/node_only_8_sorted_gt.csv"
+
+    # concatenate_ground_truth(
+    #     input_csv,
+    #     gt_csv,
+    #     output_csv
+    # )
+
+    # print("Analyzing node-level predictions...")
+    # print("\n" + "=" * 80)
+    # print("NODE STATISTICS (Aggregated vs Per-Node)")
+    # print("=" * 80)
+    # analyze_node_statistics(csv_path=output_csv)
+
+    # print("\n" + "=" * 80)
+    # print("PER-NODE METRIC DISTRIBUTIONS")
+    # print("=" * 80)
+    # plot_per_node_metric_distributions(csv_path=output_csv)
+
+    # print("\n" + "=" * 80)
+    # print("PLOTTING INDIVIDUAL NODE TIME SERIES (10 random nodes)")
+    # print("=" * 80)
+    # plot_individual_node_timeseries(csv_path=output_csv)
+
+    # print("\n" + "=" * 80)
+    # print("EXAMPLE: Plot a specific node")
+    # print("=" * 80)
+    # print("To plot a specific node, use:")
+    # print("  plot_specific_node('gru_test_predictions_test.csv', node_id=42)")
+
+    # explain_rmse_calculation(csv_path=output_csv, show_top_contributors=20)
+
+    # Define your 5 CSV file paths
+    csv_paths = [
+        "kaggle_submissions/muhammedkaya_gt.csv",
+        "kaggle_submissions/timotheehenry_gt.csv",
+        "kaggle_submissions/nomagic_gt.csv",
+        "kaggle_submissions/dmytro_gt.csv",
+        "kaggle_submissions/gegerout_gt.csv",
+    ]
+    
+    # Optional: Customize labels and styles
+    csv_labels = [
+        "Top 1 - 0.0562",
+        "Top 2 - 0.0571",
+        "Top 3 - 0.0643",
+        "Top 4 - 0.0766",
+        "Top 5 - 0.0799",
+    ]
+    
+    csv_colors = ['red', 'green', 'orange', 'purple', 'brown']
+    csv_linestyles = ['-', '--', '-.', ':', '-']
+    csv_markers = ['x', '^', 's', 'D', 'v']
+    
+    # Run the comparison
+    plot_multi_csv_comparison(
+        csv_paths=csv_paths,
+        csv_labels=csv_labels,
+        csv_colors=csv_colors,
+        csv_linestyles=csv_linestyles,
+        csv_markers=csv_markers,
+    )
+
+    print("\n✓ All visualizations complete!")
 
 
 if __name__ == "__main__":

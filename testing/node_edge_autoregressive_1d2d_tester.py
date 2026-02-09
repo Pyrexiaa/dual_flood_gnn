@@ -26,7 +26,7 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
                 is_normalized=self.dataset.is_normalized,
                 delta_t=self.dataset.timestep_interval,
             )
-            self.run_test_for_event(event_idx, validation_stats, f"./kaggle_submissions/{self.dataset.model_name}_{self.dataset.previous_timesteps}")
+            self.run_test_for_event(event_idx, validation_stats, predictions_dir=f"./kaggle_submissions/{self.dataset.model_name}_{self.dataset.previous_timesteps}")
             validation_stats.print_stats_summary()
             self.events_validation_stats.append(validation_stats)
 
