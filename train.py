@@ -7,12 +7,40 @@ import random
 
 from argparse import ArgumentParser, Namespace
 from datetime import datetime
-from data import dataset_factory, FloodEvent1D2DDataset
+from data import dataset_factory, FloodEvent1D2DDataset, BatchTensorAligner
 from models import model_factory
 from test import get_test_dataset_config, run_test
 from training import trainer_factory
 from typing import Dict, Optional, Tuple
 from utils import Logger, file_utils, train_utils
+
+def compute_aligned_feature_sizes(
+    dataset,
+    alignment: str,  # "common" | "extrapolate" | "align2d"
+) -> Tuple[int, int]:
+    """
+    Compute the node and edge input sizes the unified model should expect
+    after BatchTensorAligner alignment, without constructing the aligner itself.
+
+    Returns
+    -------
+    input_features      : int  aligned node feature size
+    input_edge_features : int  aligned edge feature size
+    """
+    # Construct a temporary aligner just for size introspection.
+    # KD-tree runs here but that's once at startup — acceptable.
+    aligner = BatchTensorAligner(dataset)
+
+    if alignment == "common":
+        input_features = aligner.node_feature_size_common
+    elif alignment == "extrapolate":
+        input_features = aligner.node_feature_size_with_extrapolation
+    elif alignment == "align2d":
+        input_features = aligner.node_feature_size_full_2d
+    else:
+        raise ValueError(f"Unknown alignment method: {alignment!r}")
+
+    return input_features, aligner.edge_feature_size
 
 def parse_args() -> Namespace:
     parser = ArgumentParser(description='')
@@ -54,6 +82,7 @@ def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEv
         'perimeter_name': dataset_parameters['perimeter_name'],
         'network_name': dataset_parameters['network_name'],
         'model_name': dataset_parameters['model_name'],
+        'node_1d_mapping': dataset_parameters['node_1d_mapping'],
     }
 
     dataset_summary_file = train_dataset_parameters['dataset_summary_file']
@@ -191,6 +220,11 @@ def main():
         # Dataset
         train_dataset, val_dataset = load_dataset(config, args, logger)
 
+        # Compute the input features
+        input_align_features, input_align_edge_features = compute_aligned_feature_sizes(
+            train_dataset, alignment=config['training_parameters']['feature_alignment']
+        )
+
         # Model
         model_params = config['model_parameters'][args.model]
         base_model_params = {
@@ -205,7 +239,13 @@ def main():
             'previous_timesteps': train_dataset.previous_timesteps,
             'device': args.device,
         }
-        model_config = {**model_params, **base_model_params}
+        model_config = {
+            **model_params,
+            **base_model_params,
+            # Override whatever input_features model_params had with the aligned sizes
+            'input_align_features': input_align_features,
+            'input_align_edge_features': input_align_edge_features,
+        }
         model = model_factory(args.model, **model_config)
         logger.log(f'Using model: {args.model}')
         logger.log(f'Using model configuration: {model_config}')

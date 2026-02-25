@@ -36,7 +36,7 @@ class DUALFloodGNNNode1D2D(BaseModel1D2D):
         # Coupling parameters
         coupling_layers: int = 1,
         coupling_hidden: int = None,
-        use_coupling_gate: bool = True,
+        use_coupling_gate: bool = False,
         use_layer_norm: bool = True,
         **base_model_kwargs,
     ):
@@ -282,10 +282,6 @@ class DUALFloodGNNNode1D2D(BaseModel1D2D):
 
         # ========== Coupling (1D <-> 2D) with Controlled Aggregation ==========
         if self.with_coupling:
-            # edge_index_1d_2d: [2, num_coupling_edges]
-            # edge_index_1d_2d[0] = 1D node indices
-            # edge_index_1d_2d[1] = 2D node indices
-
             # ===== 1D -> 2D Coupling =====
             # Transform 1D features for coupling
             coupling_1d_feats = self.coupling_1d_to_2d(x_1d[edge_index_1d_2d[0]])
@@ -316,10 +312,10 @@ class DUALFloodGNNNode1D2D(BaseModel1D2D):
                 coupling_2d_feats, edge_index_1d_2d[0], dim=0, dim_size=x_1d.size(0)
             )
 
-            # Apply gating mechanism
+            # Apply gating mechanism - decide which signal from 2d nodes are useful for 1d node
             if self.use_coupling_gate:
                 gate_input = torch.cat([x_1d, coupling_to_1d], dim=-1)
-                gate = self.gate_2d_to_1d(gate_input)
+                gate = self.gate_2d_to_1d(gate_input) # sigmoid probability
                 x_1d = x_1d + gate * coupling_to_1d
             else:
                 x_1d = x_1d + coupling_to_1d

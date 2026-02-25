@@ -63,6 +63,7 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger = None) -> 
     early_stopping_patience = train_config['early_stopping_patience']
     num_epochs = train_config['num_epochs']
     num_epochs_dyn_loss = train_config['num_epochs_dyn_loss']
+    feature_alignment = train_config['feature_alignment']
     node_loss_weight = loss_func_parameters['node_loss_weight']
     node_1d_loss_weight = loss_func_parameters['node_1d_loss_weight']
     log(f'Using dynamic loss weight adjustment for the first {num_epochs_dyn_loss}/{num_epochs} epochs')
@@ -77,6 +78,7 @@ def get_trainer_config(model_name: str, config: dict, logger: Logger = None) -> 
         'node_loss_weight': node_loss_weight,
         'node_1d_loss_weight': node_1d_loss_weight,
         'early_stopping_patience': early_stopping_patience,
+        'feature_alignment': feature_alignment,
     }
     log(f'Using training configuration: {base_config}')
     trainer_params.update(base_config)

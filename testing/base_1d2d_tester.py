@@ -15,6 +15,7 @@ class Base1D2DTester:
                  rollout_timesteps: Optional[int] = None,
                  include_physics_loss: bool = True,
                  logger: Logger = None,
+                 feature_alignment: str = None,
                  device: str = 'cpu'):
         self.model = model
         self.dataset = dataset
@@ -24,6 +25,7 @@ class Base1D2DTester:
         self.logger = logger
         self.device = device
         self.events_validation_stats: List[ValidationStats] = []
+        self.feature_alignment = feature_alignment
 
         self.log = print
         if logger is not None and hasattr(logger, 'log'):

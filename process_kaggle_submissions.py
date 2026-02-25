@@ -43,7 +43,7 @@ def remove_timesteps_per_node(df, first_n=0, last_n=0, row_idx_col="row_id"):
 
 
 def check_and_concatenate_events(
-    test_csv_model1, test_csv_model2, model1_dir, model2_dir, output_file
+    test_csv_model1, test_csv_model2, model1_dir, model2_dir, output_file, timestep_to_remove,
 ):
     """
     Check if all test events have corresponding CSV files and concatenate them.
@@ -124,7 +124,7 @@ def check_and_concatenate_events(
         df = pd.read_csv(filepath)
 
         # Remove timesteps for Model 1: remove first 8 and last 48 for each node
-        df_trimmed = remove_timesteps_per_node(df, first_n=8, last_n=48)
+        df_trimmed = remove_timesteps_per_node(df, first_n=int(timestep_to_remove), last_n=48)
         df_trimmed["model_id"] = 1
 
         dfs.append(df_trimmed)
@@ -138,7 +138,7 @@ def check_and_concatenate_events(
         df = pd.read_csv(filepath)
 
         # Remove timesteps for Model 2: remove first 8 and last 36 for each node
-        df_trimmed = remove_timesteps_per_node(df, first_n=8, last_n=36)
+        df_trimmed = remove_timesteps_per_node(df, first_n=int(timestep_to_remove), last_n=36)
         df_trimmed["model_id"] = 2
 
         dfs.append(df_trimmed)
@@ -595,6 +595,99 @@ def combine_and_rearrange(model1_csv, model2_csv, output_file, include_gt=False)
 
     return df_final
 
+def move_row_id_to_front(csv_path: str) -> None:
+    """
+    Move 'row_id' to the first column, remove any saved index column,
+    and overwrite the CSV with the same filename.
+    """
+    df = pd.read_csv(csv_path)
+
+    # Drop pandas-saved index column if present
+    if "Unnamed: 0" in df.columns:
+        df = df.drop(columns=["Unnamed: 0"])
+
+    if "row_id" not in df.columns:
+        raise ValueError("Column 'row_id' not found in CSV")
+
+    # Reorder columns
+    cols = ["row_id"] + [c for c in df.columns if c != "row_id"]
+    df = df[cols]
+
+    # Save cleanly without index
+    df.to_csv(csv_path, index=False)
+
+def compare_group_row_differences(csv_a: str, csv_b: str) -> pd.DataFrame:
+    """
+    For each (model_id, event_id, node_type, node_id) combination,
+    return how many rows differ between two CSVs.
+    """
+    group_cols = ["model_id", "event_id", "node_type", "node_id"]
+
+    df_a = pd.read_csv(csv_a)
+    df_b = pd.read_csv(csv_b)
+
+    counts_a = df_a.groupby(group_cols).size()
+    counts_b = df_b.groupby(group_cols).size()
+
+    # Align indexes and fill missing combinations with 0
+    aligned = pd.concat([counts_a, counts_b], axis=1).fillna(0)
+    aligned.columns = ["rows_in_csv_a", "rows_in_csv_b"]
+
+    # Absolute difference
+    aligned["row_difference"] = (
+        aligned["rows_in_csv_a"] - aligned["rows_in_csv_b"]
+    ).abs().astype(int)
+
+    # Keep only combinations with differences
+    result = aligned[aligned["row_difference"] > 0]
+
+    return result.reset_index()[group_cols + ["row_difference"]]
+
+def trim_rows_by_combination_fast(
+    csv_path: str,
+    diff_df: pd.DataFrame,
+    output_path: str | None = None,
+) -> None:
+    """
+    Vectorized version: remove the first `row_difference` rows
+    per (model_id, event_id, node_type, node_id) combination.
+    """
+    group_cols = ["model_id", "event_id", "node_type", "node_id"]
+
+    df = pd.read_csv(csv_path)
+
+    if output_path is None:
+        output_path = csv_path
+
+    # Create group position (0,1,2,...) within each combination
+    df["_group_pos"] = df.groupby(group_cols).cumcount()
+
+    # Join row_difference onto main df
+    df = df.merge(
+        diff_df,
+        on=group_cols,
+        how="left"
+    )
+
+    # Missing combinations → no trimming
+    df["row_difference"] = df["row_difference"].fillna(0).astype(int)
+
+    # Keep rows that are NOT in the trimmed prefix
+    df = df[df["_group_pos"] >= df["row_difference"]]
+
+    # Cleanup
+    df = df.drop(columns=["_group_pos", "row_difference"])
+
+    # Reset index and recreate row_id
+    df = df.reset_index(drop=True)
+    df["row_id"] = range(len(df))
+
+    # Move row_id to front
+    cols = ["row_id"] + [c for c in df.columns if c != "row_id"]
+    df = df[cols]
+
+    df.to_csv(output_path, index=False)
+
 def parse_args() -> Namespace:
     parser = ArgumentParser(description="")
     parser.add_argument(
@@ -610,7 +703,7 @@ def parse_args() -> Namespace:
         "--model2_saved_event_dir", type=str, required=True, help="Path to model2 saved predictions event directory"
     )
     parser.add_argument(
-        "--timestep_to_remove", type=str, required=True, help="Remove the first 10 timesteps, if sliding window length is 1, then 8 of them should be removed. If it's 2, then 7 of them should be removed."
+        "--timestep_to_remove", type=int, required=True, help="Remove the first 10 timesteps, if sliding window length is 1, then 8 of them should be removed. If it's 2, then 7 of them should be removed."
     )
     parser.add_argument(
         "--output_file", type=str, required=True, help="Path to concatenated saved predictions"
@@ -639,28 +732,13 @@ if __name__ == "__main__":
         args.model2_test_csv,
         args.model1_saved_event_dir,
         args.model2_saved_event_dir,
-        args.output_file
+        args.output_file,
+        args.timestep_to_remove,
     )
 
-    # if result is not None:
-    #     print("\nFirst few rows of combined data:")
-    #     print(result.head(10))
-
-    # rearrange_by_node(f"{output_file}.csv", f"{output_file}_rearranged.csv")
-
-    # csv_file = "predictions_event_5.csv"
-    # # Method 1: Check all timesteps per node
-    # print("\nMethod 1: Check timesteps for all nodes")
-    # timesteps_df = check_timesteps_per_node(csv_file)
-
-    # print("\n" + "="*80 + "\n")
-
-    # # Method 2: Find inconsistent nodes
-    # print("Method 2: Find nodes with inconsistent timestep counts")
-    # inconsistent_df = find_inconsistent_nodes(csv_file)
-
-    # print("\n" + "="*80 + "\n")
-
-    # # Method 3: Get summary statistics
-    # print("Method 3: Summary statistics")
-    # get_timestep_summary(csv_file)
+    # # Sample of processing the answer file to remove excessive spin up time
+    # current_df = "kaggle_submissions/hgnn_node_only_9.csv"
+    # move_row_id_to_front(current_df)
+    # diff = compare_group_row_differences(current_df, "kaggle_submissions/solutions.csv")
+    # print(diff)
+    # trim_rows_by_combination_fast(current_df, diff, f"{current_df[:-4]}_sorted.csv")

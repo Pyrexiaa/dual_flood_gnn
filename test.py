@@ -5,12 +5,13 @@ from testing.edge_autoregressive_1d2d_tester import EdgeAutoregressive1D2DTester
 from testing.heterogenous_autoregressive_1d2d_tester import HeteroNodeEdgeAutoregressive1D2DTester
 from testing.node_autoregressive_1d2d_tester import NodeAutoregressive1D2DTester
 from testing.node_edge_autoregressive_1d2d_tester import NodeEdgeAutoregressive1D2DTester
+from testing.unified_node_edge_autoregressive_1d2d_tester import UnifiedNodeEdgeAutoregressive1D2DTester
 import torch
 import os
 import random
 
 from argparse import ArgumentParser, Namespace
-from constants import EDGE_MODELS, NODE_EDGE_MODELS, GNN_NODE_EDGE_MODELS, HETEROGENOUS_MODELS
+from constants import EDGE_MODELS, NODE_EDGE_MODELS, GNN_NODE_EDGE_MODELS, HETEROGENOUS_MODELS, UNIFIED_NODE_EDGE_MODELS
 from data import dataset_factory, FloodEvent1D2DDataset
 from models import model_factory
 from typing import Dict, Optional
@@ -65,6 +66,7 @@ def run_test(
     rollout_start: int = 0,
     rollout_timesteps: Optional[int] = None,
     output_dir: Optional[str] = None,
+    feature_alignment: Optional[str] = None,
     device: str = "cpu",
 ):
     log_test_config = {
@@ -81,6 +83,7 @@ def run_test(
         "include_physics_loss": True,
         "logger": logger,
         "device": device,
+        "feature_alignment": feature_alignment,
     }
 
     if model.__class__.__name__ in NODE_EDGE_MODELS:
@@ -89,6 +92,8 @@ def run_test(
         tester = EdgeAutoregressive1D2DTester(**tester_params)
     elif model.__class__.__name__ in GNN_NODE_EDGE_MODELS:
         tester = NodeEdgeAutoregressive1D2DTester(**tester_params)
+    elif model.__class__.__name__ in UNIFIED_NODE_EDGE_MODELS:
+        tester = UnifiedNodeEdgeAutoregressive1D2DTester(**tester_params)
     elif model.__class__.__name__ in HETEROGENOUS_MODELS:
         tester = HeteroNodeEdgeAutoregressive1D2DTester(**tester_params)
     else:
@@ -108,6 +113,7 @@ def main():
     config = file_utils.read_yaml_file(args.config)
 
     test_config = config["testing_parameters"]
+    train_config = config["training_parameters"]
     log_path = test_config["log_path"]
     logger = Logger(log_path=log_path)
 
@@ -147,6 +153,7 @@ def main():
             "time_from_peak": dataset_parameters["time_from_peak"],
             "inflow_boundary_nodes": dataset_parameters["inflow_boundary_nodes"],
             "outflow_boundary_nodes": dataset_parameters["outflow_boundary_nodes"],
+            'node_1d_mapping': dataset_parameters['node_1d_mapping'],
         }
         base_datset_config = get_test_dataset_config(base_datset_config, config)
         logger.log(f"Using dataset configuration: {base_datset_config}")
@@ -188,6 +195,7 @@ def main():
         rollout_start = test_config["rollout_start"]
         rollout_timesteps = test_config["rollout_timesteps"]
         output_dir = test_config["output_dir"]
+        feature_alignment = train_config["feature_alignment"]
         run_test(
             model=model,
             model_path=args.model_path,
@@ -196,6 +204,7 @@ def main():
             rollout_start=rollout_start,
             rollout_timesteps=rollout_timesteps,
             output_dir=output_dir,
+            feature_alignment=feature_alignment,
             device=args.device,
         )
 

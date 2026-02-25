@@ -172,8 +172,8 @@ class DualScaleHGNNLayer(torch.nn.Module):
             aggr="mean",  # replaces scatter_mean
         )
 
-        self.norm_1d = LayerNorm(hidden_dim)
-        self.norm_2d = LayerNorm(hidden_dim)
+        self.norm_1d = LayerNorm(hidden_dim).to(device)
+        self.norm_2d = LayerNorm(hidden_dim).to(device)
 
     def forward(self, x_dict, edge_index_dict, edge_attr_dict):
         x_dict = self.conv(

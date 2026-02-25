@@ -1,3 +1,4 @@
+from .dual_flood_gnn_1d2d_unified import UnifiedDUALFloodGNN1D2D
 from torch.nn import Module
 
 from .base_model import BaseModel
@@ -20,6 +21,8 @@ from .node_gnn import NodeGNN
 
 
 def model_factory(model_name: str, *args, **kwargs) -> Module:
+    if model_name == 'UnifiedDUALFloodGNN1D2D':
+        return UnifiedDUALFloodGNN1D2D(*args, **kwargs)
     if model_name == 'DUALFloodHGNN1D2D':
         return DUALFloodHGNN1D2D(*args, **kwargs)
     if model_name == "DUALFloodGNNNode1D2D":

@@ -236,6 +236,7 @@ def get_1d_edge_shape(filepath: str, dtype: np.dtype = np.float32) -> np.ndarray
     SHAPE_TO_INT = {
         "circular": 0,
         "rectangular": 1,
+        "box": 1, # Box is also rectangular
         "elliptical": 2,
         "arch": 3,
     }

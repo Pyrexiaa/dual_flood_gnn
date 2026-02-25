@@ -1,4 +1,5 @@
-from constants import EDGE_MODELS, NODE_EDGE_MODELS, GNN_NODE_EDGE_MODELS, HETEROGENOUS_MODELS
+from constants import EDGE_MODELS, NODE_EDGE_MODELS, GNN_NODE_EDGE_MODELS, HETEROGENOUS_MODELS, UNIFIED_NODE_EDGE_MODELS
+from .unified_node_edge_autoregressive_1d2d_trainer import UnifiedNodeEdgeAutoregressive1D2DTrainer
 from .node_edge_autoregressive_1d2d_trainer import NodeEdgeAutoregressive1D2DTrainer
 from .base_trainer import BaseTrainer
 from .dual_autoregressive_trainer import DualAutoregressiveTrainer
@@ -30,6 +31,10 @@ def trainer_factory(model_name: str, autoregressive: bool, *args, **kwargs) -> B
         if autoregressive:
             return NodeEdgeAutoregressive1D2DTrainer(*args, **kwargs)
         
+    if model_name in UNIFIED_NODE_EDGE_MODELS:
+        if autoregressive:
+            return UnifiedNodeEdgeAutoregressive1D2DTrainer(*args, **kwargs)
+        
     if model_name in HETEROGENOUS_MODELS:
         if autoregressive:
             return HeteroNodeEdgeAutoregressive1D2DTrainer(*args, **kwargs)
@@ -44,6 +49,7 @@ __all__ = [
     'EdgeRegression1D2DTrainer',
     'NodeEdgeAutoregressive1D2DTrainer',
     'HeteroNodeEdgeAutoregressive1D2DTrainer',
+    'UnifiedNodeEdgeAutoregressive1D2DTrainer',
     'NodeAutoregressive1D2DTrainer',
     'NodeRegression1D2DTrainer',
     'trainer_factory',

@@ -933,8 +933,8 @@ def plot_multi_csv_comparison(
     # ========================
     # DEFAULT CONFIGURATION
     # ========================
-    if len(csv_paths) != 5:
-        raise ValueError(f"Expected 5 CSV paths, got {len(csv_paths)}")
+    if len(csv_paths) != 3:
+        raise ValueError(f"Expected 3 CSV paths, got {len(csv_paths)}")
     
     if csv_labels is None:
         csv_labels = [f"Result {i+1}" for i in range(5)]
@@ -1114,11 +1114,49 @@ def concatenate_ground_truth(csv_file, gt_file, output_path):
     else:
         gt_file_data = pd.read_csv(gt_file)
     
-    ori_file["timestep"] = gt_file_data["timestep"]
-    ori_file["target_water_level"] = gt_file_data["target_water_level"]
+    # Drop existing columns if they already exist
+    if "target_water_level" in ori_file.columns:
+        ori_file.drop(columns=["target_water_level"], inplace=True)
+        print("⚠ Removed existing column: target_water_level")
+
+    # ori_file["timestep"] = gt_file_data["timestep"]
+    ori_file["target_water_level"] = gt_file_data["water_level"]
     
     ori_file.to_csv(output_path, index=False)
     print(f"✓ Saved combined data to {output_path}")
+    
+def sort_and_reset_csv(input_csv: str, output_csv: str):
+    """
+    Sorts a CSV by model_id, event_id, node_type, node_id,
+    resets row_id from 0, and saves to a new file.
+
+    Args:
+        input_csv:  Path to the input CSV file.
+        output_csv: Path to save the sorted CSV file.
+    """
+    df = pd.read_csv(input_csv)
+
+    sort_keys = ["model_id", "event_id", "node_type", "node_id"]
+
+    # Verify all sort keys exist
+    for key in sort_keys:
+        if key not in df.columns:
+            raise ValueError(f"Missing sort key '{key}' in file")
+
+    df_sorted = df.sort_values(by=sort_keys, ascending=True).reset_index(drop=True)
+
+    # Reset row_id from 0
+    df_sorted["row_id"] = df_sorted.index
+
+    # Reorder columns to ensure row_id is first
+    cols = ["row_id"] + [col for col in df_sorted.columns if col != "row_id"]
+    df_sorted = df_sorted[cols]
+
+    df_sorted.to_csv(output_csv, index=False)
+
+    print(f"Original rows : {len(df)}")
+    print(f"Sorted by     : {sort_keys}")
+    print(f"Saved to      : {output_csv}")
 
 def parse_args() -> Namespace:
     parser = ArgumentParser(description="")
@@ -1181,7 +1219,6 @@ def parse_args() -> Namespace:
 
 #     print("\n✓ All visualizations complete!")
 
-
 def main():
     # input_csv = "kaggle_submissions/node_only_8_sorted.csv"
     # gt_csv = "kaggle_submissions/ground_truth.csv"
@@ -1217,27 +1254,53 @@ def main():
 
     # explain_rmse_calculation(csv_path=output_csv, show_top_contributors=20)
 
+    input_csv = "kaggle_submissions/sajay_gt.csv"
+    gt_csv = "kaggle_submissions/solutions_remapped_sorted.csv"
+    output_csv = "kaggle_submissions/sajay_gt_2.csv"
+
+    concatenate_ground_truth(
+        input_csv,
+        gt_csv,
+        output_csv
+    )
+    
+    input_csv = "kaggle_submissions/dmytro_gt.csv"
+    gt_csv = "kaggle_submissions/solutions_remapped_sorted.csv"
+    output_csv = "kaggle_submissions/dmytro_gt_2.csv"
+
+    concatenate_ground_truth(
+        input_csv,
+        gt_csv,
+        output_csv
+    )
+
+    input_csv = "kaggle_submissions/mtmr_gt.csv"
+    gt_csv = "kaggle_submissions/solutions_remapped_sorted.csv"
+    output_csv = "kaggle_submissions/mtmr_gt_2.csv"
+
+    concatenate_ground_truth(
+        input_csv,
+        gt_csv,
+        output_csv
+    )
+
     # Define your 5 CSV file paths
     csv_paths = [
-        "kaggle_submissions/muhammedkaya_gt.csv",
-        "kaggle_submissions/timotheehenry_gt.csv",
-        "kaggle_submissions/nomagic_gt.csv",
-        "kaggle_submissions/dmytro_gt.csv",
-        "kaggle_submissions/gegerout_gt.csv",
+        "kaggle_submissions/sajay_gt_2.csv",
+        "kaggle_submissions/dmytro_gt_2.csv",
+        "kaggle_submissions/mtmr_gt_2.csv",
     ]
     
     # Optional: Customize labels and styles
     csv_labels = [
-        "Top 1 - 0.0562",
-        "Top 2 - 0.0571",
-        "Top 3 - 0.0643",
-        "Top 4 - 0.0766",
-        "Top 5 - 0.0799",
+        "Top 1 Sajay - 0.02860",
+        "Top 2 Dmytro - 0.03185",
+        "Top 3 Mtmr - 0.03950",
     ]
     
-    csv_colors = ['red', 'green', 'orange', 'purple', 'brown']
-    csv_linestyles = ['-', '--', '-.', ':', '-']
-    csv_markers = ['x', '^', 's', 'D', 'v']
+    csv_colors = ['red', 'green', 'orange']
+    csv_linestyles = ['-', '--', '-.']
+    csv_markers = ['x', '^', 's']
     
     # Run the comparison
     plot_multi_csv_comparison(

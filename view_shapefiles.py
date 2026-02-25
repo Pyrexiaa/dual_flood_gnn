@@ -661,7 +661,6 @@ def diagnose_boundary_condition_npz(
 
 def filter_nodes_by_fid_match(
     source_shapefile: str,
-    reference_shapefile: str,
     output_shapefile: Optional[str] = None,
     source_fid_column: str = "FID",
     reference_nodeidx_column: str = "node_idx",
@@ -685,7 +684,6 @@ def filter_nodes_by_fid_match(
 
     Args:
         source_shapefile: Path to the shapefile to be filtered (contains FID)
-        reference_shapefile: Path to the reference shapefile (contains node_idx)
         output_shapefile: Optional path to save filtered shapefile.
                          If None, returns GeoDataFrame without saving
         source_fid_column: Column name for FID in source shapefile (default: "FID")
@@ -704,8 +702,6 @@ def filter_nodes_by_fid_match(
     # Validate input files exist
     if not os.path.exists(source_shapefile):
         raise FileNotFoundError(f"Source shapefile not found: {source_shapefile}")
-    if not os.path.exists(reference_shapefile):
-        raise FileNotFoundError(f"Reference shapefile not found: {reference_shapefile}")
 
     print("=" * 80)
     print("FILTERING NODES WITH CORRECT LOGIC")
@@ -717,22 +713,11 @@ def filter_nodes_by_fid_match(
     print(f"  Total nodes in source: {len(source_gdf)}")
     print(f"  Columns: {list(source_gdf.columns)}")
 
-    print(f"\nLoading reference shapefile: {reference_shapefile}")
-    reference_gdf = gpd.read_file(reference_shapefile)
-    print(f"  Total nodes in reference: {len(reference_gdf)}")
-    print(f"  Columns: {list(reference_gdf.columns)}")
-
     # Validate required columns exist
     if source_fid_column not in source_gdf.columns:
         raise ValueError(
             f"Column '{source_fid_column}' not found in source shapefile. "
             f"Available columns: {list(source_gdf.columns)}"
-        )
-
-    if reference_nodeidx_column not in reference_gdf.columns:
-        raise ValueError(
-            f"Column '{reference_nodeidx_column}' not found in reference shapefile. "
-            f"Available columns: {list(reference_gdf.columns)}"
         )
 
     # =========================================================================
@@ -911,30 +896,6 @@ def filter_nodes_by_fid_match(
             print(
                 "  These nodes cannot be recovered as they were in removed_nodes list"
             )
-
-    # =========================================================================
-    # STEP 6: Optional reference shapefile filtering
-    # =========================================================================
-    print("\n" + "=" * 80)
-    print("STEP 6: OPTIONAL REFERENCE FILTERING")
-    print("=" * 80)
-
-    # Get valid node indices from reference shapefile
-    reference_values = reference_gdf[reference_nodeidx_column].astype(str)
-    valid_reference_set = set(reference_values)
-
-    print(f"\nValid node_idx values in reference: {len(valid_reference_set)}")
-
-    # Check how many of our nodes match the reference
-    current_fids_str = filtered_gdf[source_fid_column].astype(str)
-    nodes_in_reference = current_fids_str.isin(valid_reference_set).sum()
-    nodes_not_in_reference = len(filtered_gdf) - nodes_in_reference
-
-    print(f"Current nodes matching reference: {nodes_in_reference:,}")
-    print(f"Current nodes NOT in reference: {nodes_not_in_reference:,}")
-
-    # Optionally filter by reference (you can enable this if needed)
-    # filtered_gdf = filtered_gdf[current_fids_str.isin(valid_reference_set)]
 
     # =========================================================================
     # FINAL STATISTICS
@@ -2282,7 +2243,7 @@ def remove_amended_files(
     return successfully_removed, failed_to_remove
 
 if __name__ == "__main__":
-    model_name = "Model4"
+    model_name = "model3"
 
     model1_boundary_nodes = [
         3741,
@@ -2299,6 +2260,21 @@ if __name__ == "__main__":
         3764,
     ]
     model2_boundary_nodes = []
+    model3_boundary_nodes = [
+        19712,
+        19742,
+        19743,
+        19752,
+        19753,
+        19754,
+        19755,
+        19756,
+        19757,
+        19758,
+        19759,
+        20473,
+        20475
+    ]
     model4_boundary_nodes = [
         8940,
         8964,
@@ -2406,11 +2382,13 @@ if __name__ == "__main__":
         9219,
     ]
 
-    if model_name == "Model1":
+    if model_name == "model1":
         selected_boundary_nodes = model1_boundary_nodes
-    elif model_name == "Model2":
+    elif model_name == "model2":
         selected_boundary_nodes = model2_boundary_nodes
-    elif model_name == "Model4":
+    elif model_name == "model3":
+        selected_boundary_nodes = model4_boundary_nodes
+    elif model_name == "model4":
         selected_boundary_nodes = model4_boundary_nodes
 
     # visualize_boundary_condition_masks(
@@ -2433,24 +2411,23 @@ if __name__ == "__main__":
 
     # Edit shape files
     filter_nodes_by_fid_match(
-        source_shapefile=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/raw/Geometry/Nodes_2D.shp",
-        reference_shapefile=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/{model_name.lower()}_removed_ghost/Nodes_2D.shp",
-        output_shapefile=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/{model_name.lower()}_removed_ghost/Nodes_2D_processed.shp",
+        source_shapefile=f"/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/{model_name}/raw/Geometry/Nodes_2D.shp",
+        output_shapefile=f"/Users/jiayulim/Documents/GitHub/flood_pi_gnn/{model_name.lower()}_removed_ghost/Nodes_2D_processed.shp",
         source_fid_column="FID",
-        reference_nodeidx_column="FID",  # either node_idx or FID depending on how Nodes_2D_processed.shp was created
+        reference_nodeidx_column="FID",
         boundary_nodes=selected_boundary_nodes,
-        remapping_json=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/node_edge_remapping/train.json",
+        remapping_json=f"/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/{model_name}/processed/node_edge_remapping/train.json",
         remapping_key="node_remapping",
         add_original_fid=False,
     )
 
     filter_edges_by_node_existence(
-        source_edges_shapefile=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name.lower()}/raw/Geometry/Links_2D.shp",
-        reference_nodes_shapefile=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/{model_name.lower()}_removed_ghost/Nodes_2D_processed.shp",
-        output_shapefile=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/{model_name.lower()}_removed_ghost/Links_2D_processed.shp",
+        source_edges_shapefile=f"/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/{model_name.lower()}/raw/Geometry/Links_2D.shp",
+        reference_nodes_shapefile=f"/Users/jiayulim/Documents/GitHub/flood_pi_gnn/{model_name.lower()}_removed_ghost/Nodes_2D_processed.shp",
+        output_shapefile=f"/Users/jiayulim/Documents/GitHub/flood_pi_gnn/{model_name.lower()}_removed_ghost/Links_2D_processed.shp",
         edge_from_node_column="from_node",
         edge_to_node_column="to_node",
         node_id_column="FID",
-        remapping_json=f"/Users/jiayulim/Documents/GitHub/dual_flood_gnn/data/{model_name}/processed/node_edge_remapping/train.json",
+        remapping_json=f"/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/{model_name}/processed/node_edge_remapping/train.json",
         add_original_ids=False,
     )

@@ -24,7 +24,9 @@ class Base1D2DTrainer:
                  early_stopping_patience: Optional[int] = None,
                  val_dataset: Optional[FloodEvent1D2DDataset] = None,
                  logger: Logger = None,
-                 device: str = 'cpu'):
+                 device: str = 'cpu',
+                 feature_alignment: str = None
+                ):
         self.dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         self.model = model
         self.optimizer = optimizer
@@ -37,6 +39,7 @@ class Base1D2DTrainer:
         self.gradient_clip_value = gradient_clip_value
         self.val_dataset = val_dataset
         self.device = device
+        self.feature_alignment = feature_alignment
 
         if early_stopping_patience is not None:
             assert self.val_dataset is not None, "Validation dataset must be provided if early stopping is used."

@@ -1,6 +1,6 @@
 dataset_parameters:
   storage_mode: 'memory'                                     # 'memory' or 'disk'. Where to load the dataset
-  root_dir: 'data/model1'                                  # Path to root directory for the dataset files
+  root_dir: 'data/Model1'                                  # Path to root directory for the dataset files
   nodes_1d_shp_file: 'Geometry/Nodes_1D.shp'                 # Filename of shapefile containing node information
   nodes_2d_shp_file: 'Geometry/Nodes_2D.shp'                 # Filename of shapefile containing node information
   edges_1d_shp_file: 'Geometry/Links_1D.shp'                 # Filename of shapefile containing edge information
@@ -8,13 +8,33 @@ dataset_parameters:
   edges_1d2d_shp_file: 'Geometry/Node1D_to_Node2D_Links.shp' # Filename of shapefile containing edge information
   dem_file: 'Geometry/DEM.tif'    
   perimeter_name: 'US Beaver'  
-  network_name: 'Base'                         # Filename of DEM file
-  features_stats_file: 'features_stats.yaml'                 # Filename for the yaml file containing feature statistics (mean, std, min, max). Generated when initializing the dataset
+  network_name: 'Base'                                      # Filename of DEM file
+  model_name: 'Model1'
+  features_stats_file: 'features_stats.yaml'                # Filename for the yaml file containing feature statistics (mean, std, min, max). Generated when initializing the dataset
+  node_1d_mapping:
+    0: 0
+    1: 12
+    2: 15
+    3: 4
+    4: 5
+    5: 7
+    6: 10
+    7: 9
+    8: 11
+    9: 13
+    10: 14
+    11: 16
+    12: 3
+    13: 2
+    14: 6
+    15: 8
+    16: 1                      
+  alignment_method: 'common'
 
   previous_timesteps: 1                                      # Number of previous timesteps to consider for input features
-  normalize: False                                            # Whether to normalize features
-  timestep_interval: 300                                    # Interval between timesteps in seconds
-  spin_up_time: 14400
+  normalize: True                                            # Whether to normalize features
+  timestep_interval: 300                                     # Interval between timesteps in seconds
+  spin_up_time: 14400                                       # Spin up time in seconds. Used to trim the beginning of the flood event. Can be defined per Run ID
   time_from_peak: null                                       # Time after peak flow to consider in data in seconds. Used to trim the end of the flood event. Set to null to include the entire event
   inflow_boundary_nodes: null                                # List of inflow boundary node IDs for boundary conditions
   outflow_boundary_nodes:                                    # List of outflow boundary node IDs for boundary conditions
@@ -40,21 +60,22 @@ dataset_parameters:
     event_stats_file: 'test_event_stats.yaml'                # Filename for the yaml file containing testing event statistics. Generated when initializing the dataset
 
 training_parameters:
-  log_path             : null                                # Path to save training logs
+  log_path             : 'logs/loss_calibration.log'         # Path to save training logs
   model_dir            : 'saved_models'                      # Path to directory to save trained models
   stats_dir            : 'training_stats'                    # Path to directory to save training statistics
   checkpoint_path      : null                                # Path to load a pre-trained model; If set to null, no pre-trained model is loaded
-  num_epochs           : 300                                 # Number of epochs
-  num_epochs_dyn_loss  : 0                                   # Number of epochs to determine loss scaling ratios dynamically. Usually 10 epochs is sufficient
+  num_epochs           : 300                                  # Number of epochs
+  num_epochs_dyn_loss  : 0                               # Number of epochs to determine loss scaling ratios dynamically. Usually 10 epochs is sufficient
   batch_size           : 32                                  # Batch size
   learning_rate        : 0.0001                              # Learning rate
   adam_weight_decay    : 0                                   # Weight decay
   gradient_clip_value : 0.5                                  # Gradient clipping value. If set to null, no gradient clipping is applied
   early_stopping_patience: 15                                # Early stopping patience in number of epochs. If set to null, no early stopping is applied
   val_split_percent  : 0.1                                   # Percentage of validation split for autoregressive training
+  feature_alignment: 'common'                                    # If wanted to align features between 1D and 2D, selection: null, common, extrapolate, align2d
 
   autoregressive:
-    enabled            : True                                # Enable autoregressive training
+    enabled            : True                               # Enable autoregressive training
     init_num_timesteps : 2                                   # Initial number of timesteps for autoregressive training
     total_num_timesteps: 6                                   # Total number of timesteps for autoregressive training
     timestep_increment : 2                                   # Number of timesteps to increase after each curriculum step
@@ -64,14 +85,15 @@ training_parameters:
 loss_func_parameters:
   node_loss: 'mse'                                           # Loss function for node features. Options: 'mse', 'mae', 'huber'
   edge_loss: 'mse'                                           # Loss function for edge features. Options: 'mse', 'mae', 'huber'
-  node_loss_weight: 1.0                                      # Importance weight for node prediction loss. Applied after scaling.
-  edge_pred_loss_scale: 3.00                                 # Value used to scale edge prediction loss. This is used as an initial value when using dynamic loss scaling
+  node_loss_weight: 1.0  
+  node_1d_loss_weight: 1.0                                      # Importance weight for node prediction loss. Applied after scaling.
+  edge_pred_loss_scale: 1.0                                  # Value used to scale edge prediction loss. This is used as an initial value when using dynamic loss scaling
   edge_loss_weight: 0.4                                      # Importance weight for edge prediction loss. Applied after scaling.
-  use_global_mass_loss: True                                 # Enable global mass conservation in loss function
-  global_mass_loss_scale: 1.40e-9                            # Value used to scale global mass conservation loss. This is used as an initial value when using dynamic loss scaling
+  use_global_mass_loss: False # Focus on node loss only                                 # Enable global mass conservation in loss function
+  global_mass_loss_scale: 1.0                                # Value used to scale global mass conservation loss. This is used as an initial value when using dynamic loss scaling
   global_mass_loss_weight: 0.01                              # Importance weight for global mass conservation loss. Applied after scaling.
-  use_local_mass_loss: True                                  # Enable local mass conservation in loss function
-  local_mass_loss_scale: 1.19e-9                             # Value used to scale local mass conservation loss. This is used as an initial value when using dynamic loss scaling
+  use_local_mass_loss: False # Focus on node loss only                            # Enable local mass conservation in loss function
+  local_mass_loss_scale: 1.0                                 # Value used to scale local mass conservation loss. This is used as an initial value when using dynamic loss scaling
   local_mass_loss_weight: 0.01                               # Importance weight for local mass conservation loss. Applied after scaling.
 
   huber:
@@ -138,7 +160,105 @@ model_parameters:                                            # Model-specific pa
     decoder_layers: 3
     decoder_activation: 'relu'
 
+  GIN:
+    hidden_features: 64
+    num_layers: 3
+    activation: 'relu'
+    mlp_layers: 3
+    eps: 0.0
+    train_eps: False
+    encoder_layers: 0
+    encoder_activation: 'relu'
+    decoder_layers: 0
+    decoder_activation: 'relu'
+
+  EdgeGIN:
+    hidden_features: 64
+    num_layers: 3
+    activation: 'relu'
+    mlp_layers: 3
+    eps: 0.0
+    train_eps: False
+    encoder_layers: 0
+    encoder_activation: 'relu'
+    decoder_layers: 3
+    decoder_activation: 'relu'
+
+  GINE:
+    hidden_features: 64
+    num_layers: 3
+    activation: 'relu'
+    mlp_layers: 3
+    eps: 0.0
+    train_eps: False
+    encoder_layers: 0
+    encoder_activation: 'relu'
+    decoder_layers: 0
+    decoder_activation: 'relu'
+
+  EdgeGINE:
+    hidden_features: 64
+    num_layers: 3
+    activation: 'relu'
+    mlp_layers: 3
+    eps: 0.0
+    train_eps: False
+    encoder_layers: 0
+    encoder_activation: 'relu'
+    decoder_layers: 3
+    decoder_activation: 'relu'
+
+  GraphSAGE:
+    hidden_features: 64
+    num_layers: 3
+    activation: 'relu'
+    aggr: 'mean'
+    normalize: False
+    root_weight: True
+    project: False
+    bias: True
+    encoder_layers: 0
+    encoder_activation: 'relu'
+    decoder_layers: 0
+    decoder_activation: 'relu'
+
+  EdgeGraphSAGE:
+    hidden_features: 64
+    num_layers: 3
+    activation: 'relu'
+    aggr: 'mean'
+    normalize: False
+    root_weight: True
+    project: False
+    bias: True
+    encoder_layers: 0
+    encoder_activation: 'relu'
+    decoder_layers: 3
+    decoder_activation: 'relu'
+
   DUALFloodGNN:
+    hidden_features: 64
+    num_layers: 3
+    activation: 'relu'
+    residual: True
+    mlp_layers: 3
+    encoder_layers: 3
+    encoder_activation: 'relu'
+    decoder_layers: 3
+    decoder_activation: 'relu'
+
+  DUALFloodGNNNode1D2D:
+    hidden_features: 64
+    num_layers: 3
+    activation: 'relu'
+    residual: True
+    mlp_layers: 3
+    encoder_layers: 3
+    encoder_activation: 'relu'
+    decoder_layers: 3
+    decoder_activation: 'relu'
+
+  UnifiedDUALFloodGNN1D2D:
     hidden_features: 64
     num_layers: 3
     activation: 'relu'

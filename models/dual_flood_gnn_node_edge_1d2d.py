@@ -38,7 +38,7 @@ class DUALFloodGNNNodeEdge1D2D(BaseModel1D2D):
         # Coupling parameters
         coupling_layers: int = 1,
         coupling_hidden: int = None,
-        use_coupling_gate: bool = True,
+        use_coupling_gate: bool = False,
         use_layer_norm: bool = True,
         **base_model_kwargs,
     ):
@@ -325,10 +325,6 @@ class DUALFloodGNNNodeEdge1D2D(BaseModel1D2D):
 
         # ========== Coupling (1D <-> 2D) with Controlled Aggregation ==========
         if self.with_coupling:
-            # edge_index_1d_2d: [2, num_coupling_edges]
-            # edge_index_1d_2d[0] = 1D node indices
-            # edge_index_1d_2d[1] = 2D node indices
-
             # ===== 1D -> 2D Coupling =====
             # Transform 1D features for coupling
             coupling_1d_feats = self.coupling_1d_to_2d(x_1d[edge_index_1d_2d[0]])
