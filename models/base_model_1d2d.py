@@ -12,10 +12,14 @@ class BaseModel1D2D(Module):
                  static_1d_edge_features: int,
                  dynamic_1d_edge_features: int,
                  previous_timesteps: int,
+                 input_align_features: int = None,
+                 input_align_edge_features: int = None,
                  device: str = 'cpu'):
         super().__init__()
         self.device = device
         self.previous_timesteps = previous_timesteps
+        self.input_align_features = input_align_features
+        self.input_align_edge_features = input_align_edge_features
         
         # 2D features
         self.input_node_features = static_node_features + (dynamic_node_features * (previous_timesteps + 1))

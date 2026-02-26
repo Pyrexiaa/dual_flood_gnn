@@ -212,9 +212,10 @@ def main():
         logger.log(f"Loaded dataset with {len(dataset)} samples")
 
         # Compute the input features
-        input_align_features, input_align_edge_features = compute_aligned_feature_sizes(
-            dataset, alignment=config["training_parameters"]["feature_alignment"]
-        )
+        if config["training_parameters"]["feature_alignment"] is not None:
+            input_align_features, input_align_edge_features = compute_aligned_feature_sizes(
+                dataset, alignment=config["training_parameters"]["feature_alignment"]
+            )
 
         # Load model
         model_params = config["model_parameters"][args.model]
@@ -235,8 +236,8 @@ def main():
             **model_params,
             **base_model_params,
             # Override whatever input_features model_params had with the aligned sizes
-            "input_align_features": input_align_features,
-            "input_align_edge_features": input_align_edge_features,
+            "input_align_features": input_align_features if config["training_parameters"]["feature_alignment"] is not None else None,
+            "input_align_edge_features": input_align_edge_features if config["training_parameters"]["feature_alignment"] is not None else None,
         }
         model = model_factory(args.model, **model_config)
         model.load_state_dict(torch.load(args.model_path, weights_only=True))

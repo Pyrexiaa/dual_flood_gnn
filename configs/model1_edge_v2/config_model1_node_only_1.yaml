@@ -11,6 +11,25 @@ dataset_parameters:
   network_name: 'Base'                                      # Filename of DEM file
   model_name: 'Model1'
   features_stats_file: 'features_stats.yaml'                 # Filename for the yaml file containing feature statistics (mean, std, min, max). Generated when initializing the dataset
+  node_1d_mapping:
+    0: 0
+    1: 12
+    2: 15
+    3: 4
+    4: 5
+    5: 7
+    6: 10
+    7: 9
+    8: 11
+    9: 13
+    10: 14
+    11: 16
+    12: 3
+    13: 2
+    14: 6
+    15: 8
+    16: 1                      
+  alignment_method: null
 
   previous_timesteps: 1                                      # Number of previous timesteps to consider for input features
   normalize: True                                            # Whether to normalize features
@@ -53,6 +72,7 @@ training_parameters:
   gradient_clip_value : 1.0                                  # Gradient clipping value. If set to null, no gradient clipping is applied
   early_stopping_patience: 20                                # Early stopping patience in number of epochs. If set to null, no early stopping is applied
   val_split_percent  : 0.1                                   # Percentage of validation split for autoregressive training
+  feature_alignment: null
 
   autoregressive:
     enabled            : True                               # Enable autoregressive training
