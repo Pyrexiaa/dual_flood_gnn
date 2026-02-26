@@ -2,20 +2,61 @@ import numpy as np
 import traceback
 from testing.dual_autoregressive_1d2d_tester import DualAutoregressive1D2DTester
 from testing.edge_autoregressive_1d2d_tester import EdgeAutoregressive1D2DTester
-from testing.heterogenous_autoregressive_1d2d_tester import HeteroNodeEdgeAutoregressive1D2DTester
+from testing.heterogenous_autoregressive_1d2d_tester import (
+    HeteroNodeEdgeAutoregressive1D2DTester,
+)
 from testing.node_autoregressive_1d2d_tester import NodeAutoregressive1D2DTester
-from testing.node_edge_autoregressive_1d2d_tester import NodeEdgeAutoregressive1D2DTester
-from testing.unified_node_edge_autoregressive_1d2d_tester import UnifiedNodeEdgeAutoregressive1D2DTester
+from testing.node_edge_autoregressive_1d2d_tester import (
+    NodeEdgeAutoregressive1D2DTester,
+)
+from testing.unified_node_edge_autoregressive_1d2d_tester import (
+    UnifiedNodeEdgeAutoregressive1D2DTester,
+)
 import torch
 import os
 import random
 
 from argparse import ArgumentParser, Namespace
-from constants import EDGE_MODELS, NODE_EDGE_MODELS, GNN_NODE_EDGE_MODELS, HETEROGENOUS_MODELS, UNIFIED_NODE_EDGE_MODELS
-from data import dataset_factory, FloodEvent1D2DDataset
+from constants import (
+    EDGE_MODELS,
+    NODE_EDGE_MODELS,
+    GNN_NODE_EDGE_MODELS,
+    HETEROGENOUS_MODELS,
+    UNIFIED_NODE_EDGE_MODELS,
+)
+from data import dataset_factory, FloodEvent1D2DDataset, BatchTensorAligner
 from models import model_factory
 from typing import Dict, Optional
 from utils import Logger, file_utils
+
+
+def compute_aligned_feature_sizes(
+    dataset,
+    alignment: str,  # "common" | "extrapolate" | "align2d"
+) -> tuple[int, int]:
+    """
+    Compute the node and edge input sizes the unified model should expect
+    after BatchTensorAligner alignment, without constructing the aligner itself.
+
+    Returns
+    -------
+    input_features      : int  aligned node feature size
+    input_edge_features : int  aligned edge feature size
+    """
+    # Construct a temporary aligner just for size introspection.
+    # KD-tree runs here but that's once at startup — acceptable.
+    aligner = BatchTensorAligner(dataset)
+
+    if alignment == "common":
+        input_features = aligner.node_feature_size_common
+    elif alignment == "extrapolate":
+        input_features = aligner.node_feature_size_with_extrapolation
+    elif alignment == "align2d":
+        input_features = aligner.node_feature_size_full_2d
+    else:
+        raise ValueError(f"Unknown alignment method: {alignment!r}")
+
+    return input_features, aligner.edge_feature_size
 
 
 def parse_args() -> Namespace:
@@ -80,7 +121,7 @@ def run_test(
         "dataset": dataset,
         "rollout_start": rollout_start,
         "rollout_timesteps": rollout_timesteps,
-        "include_physics_loss": True,
+        "include_physics_loss": False,
         "logger": logger,
         "device": device,
         "feature_alignment": feature_alignment,
@@ -144,7 +185,7 @@ def main():
             "dem_file": dataset_parameters["dem_file"],
             "perimeter_name": dataset_parameters["perimeter_name"],
             "network_name": dataset_parameters["network_name"],
-            'model_name': dataset_parameters['model_name'],
+            "model_name": dataset_parameters["model_name"],
             "features_stats_file": dataset_parameters["features_stats_file"],
             "previous_timesteps": dataset_parameters["previous_timesteps"],
             "normalize": dataset_parameters["normalize"],
@@ -153,7 +194,7 @@ def main():
             "time_from_peak": dataset_parameters["time_from_peak"],
             "inflow_boundary_nodes": dataset_parameters["inflow_boundary_nodes"],
             "outflow_boundary_nodes": dataset_parameters["outflow_boundary_nodes"],
-            'node_1d_mapping': dataset_parameters['node_1d_mapping'],
+            "node_1d_mapping": dataset_parameters["node_1d_mapping"],
         }
         base_datset_config = get_test_dataset_config(base_datset_config, config)
         logger.log(f"Using dataset configuration: {base_datset_config}")
@@ -170,6 +211,11 @@ def main():
         )
         logger.log(f"Loaded dataset with {len(dataset)} samples")
 
+        # Compute the input features
+        input_align_features, input_align_edge_features = compute_aligned_feature_sizes(
+            dataset, alignment=config["training_parameters"]["feature_alignment"]
+        )
+
         # Load model
         model_params = config["model_parameters"][args.model]
         previous_timesteps = dataset.previous_timesteps
@@ -185,7 +231,13 @@ def main():
             "previous_timesteps": previous_timesteps,
             "device": args.device,
         }
-        model_config = {**model_params, **base_model_params}
+        model_config = {
+            **model_params,
+            **base_model_params,
+            # Override whatever input_features model_params had with the aligned sizes
+            "input_align_features": input_align_features,
+            "input_align_edge_features": input_align_edge_features,
+        }
         model = model_factory(args.model, **model_config)
         model.load_state_dict(torch.load(args.model_path, weights_only=True))
         logger.log(f"Using model checkpoint for {args.model}: {args.model_path}")
