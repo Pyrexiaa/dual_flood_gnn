@@ -179,6 +179,11 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
                     x, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.align_common_features_no_rainfall_1d(
                         x, x_1d, edge_attr, edge_attr_1d
                     )
+                elif self.feature_alignment == "common":
+                    # print("Selected common feature alignment")  # --- IGNORE ---
+                    x, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.align_common_features(
+                        x, x_1d, edge_attr, edge_attr_1d
+                    )
 
                 # Model prediction - returns both 2D and 1D node predictions
                 pred_diff, pred_diff_1d = self.model(

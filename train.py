@@ -38,6 +38,8 @@ def compute_aligned_feature_sizes(
         input_features = aligner.node_feature_size_with_extrapolation
     elif alignment == "align2d":
         input_features = aligner.node_feature_size_full_2d
+    elif alignment == "common_no_rainfall_1d":
+        input_features = aligner.node_feature_size_common_no_rainfall_1d
     else:
         raise ValueError(f"Unknown alignment method: {alignment!r}")
 
@@ -222,7 +224,7 @@ def main():
         train_dataset, val_dataset = load_dataset(config, args, logger)
 
         # Compute the input features
-        if config['training_parameters']['feature_alignment'] is not None:
+        if config['training_parameters']['feature_alignment'] is not None and config['training_parameters']['feature_alignment'] != "inject_rainfall":
             input_align_features, input_align_edge_features = compute_aligned_feature_sizes(
                 train_dataset, alignment=config['training_parameters']['feature_alignment']
             )
@@ -241,7 +243,7 @@ def main():
             'static_edge_features': train_dataset.num_static_edge_features,
             'dynamic_edge_features': train_dataset.num_dynamic_edge_features,
             'static_1d_node_features': train_dataset.num_static_1d_node_features,
-            'dynamic_1d_node_features': train_dataset.num_dynamic_1d_node_features,
+            'dynamic_1d_node_features': int(train_dataset.num_dynamic_1d_node_features + 1) if config['training_parameters']['feature_alignment'] == 'inject_rainfall' else train_dataset.num_dynamic_1d_node_features,
             'static_1d_edge_features': train_dataset.num_static_1d_edge_features,
             'dynamic_1d_edge_features': train_dataset.num_dynamic_1d_edge_features,
             'previous_timesteps': train_dataset.previous_timesteps,
@@ -251,8 +253,8 @@ def main():
             **model_params,
             **base_model_params,
             # Override whatever input_features model_params had with the aligned sizes
-            'input_align_features': input_align_features if config['training_parameters']['feature_alignment'] is not None else None,
-            'input_align_edge_features': input_align_edge_features if config['training_parameters']['feature_alignment'] is not None else None,
+            'input_align_features': input_align_features if config['training_parameters']['feature_alignment'] is not None and config['training_parameters']['feature_alignment'] != 'inject_rainfall' else None,
+            'input_align_edge_features': input_align_edge_features if config['training_parameters']['feature_alignment'] is not None and config['training_parameters']['feature_alignment'] != 'inject_rainfall' else None,
         }
         model = model_factory(args.model, **model_config)
         logger.log(f'Using model: {args.model}')

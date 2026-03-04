@@ -23,6 +23,14 @@ class DUALFloodHGNN1D2D(BaseModel1D2D):
 
         self.hidden_features = hidden_features
 
+        # If alignment is called:
+        if self.input_align_features is not None:
+            self.input_node_features = self.input_align_features
+            self.input_1d_node_features = self.input_align_features
+        if self.input_align_edge_features is not None:
+            self.input_edge_features = self.input_align_edge_features
+            self.input_1d_edge_features = self.input_align_edge_features
+
         # ========== Input projections ==========
         self.node_proj_2d = make_mlp(
             self.input_node_features,

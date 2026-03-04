@@ -150,158 +150,63 @@ class HeteroNodeEdgeAutoregressive1D2DTrainer(
         self.training_stats.end_train()
         self._add_scaled_physics_loss_history()
 
-    def _create_hetero_data_for_inference(
-        self,
-        graph,
-        sliding_window: torch.Tensor,
-        sliding_window_1d: torch.Tensor,
-        edge_sliding_window: torch.Tensor,
-        edge_sliding_window_1d: torch.Tensor,
-    ) -> HeteroData:
+    def _convert_to_hetero_data(self, batch, timestep: int = 0) -> HeteroData:
         """
-        Create HeteroData structure for inference with updated sliding windows.
+        Convert homogeneous batch data to HeteroData format.
 
         Args:
-            graph: Current graph batch
-            sliding_window: 2D node sliding window
-            sliding_window_1d: 1D node sliding window
-            edge_sliding_window: 2D edge sliding window
-            edge_sliding_window_1d: 1D edge sliding window
+            batch: Original batch with separate 1D and 2D data
+            timestep: Current timestep index
 
         Returns:
-            HeteroData object ready for model forward pass
+            HeteroData object with node types ['2d', '1d'] and appropriate edge types
         """
         hetero_data = HeteroData()
 
-        # ===== 2D Node Features =====
-        x_2d = torch.cat(
-            [
-                graph.x[:, : self.start_node_target_idx],
-                sliding_window,
-                graph.x[:, self.end_node_target_idx :],
-            ],
-            dim=1,
-        )
-        
-        # ===== 1D Node Features =====
-        x_1d = torch.cat(
-            [
-                graph.x_1d[:, : self.start_1d_node_target_idx],
-                sliding_window_1d,
-                graph.x_1d[:, self.end_1d_node_target_idx :],
-            ],
-            dim=1,
-        )
+        # ── Slice the correct timestep ────────────────────────────────────────
+        x_2d        = batch.x[:, :, timestep].float()
+        x_1d        = batch.x_1d[:, :, timestep].float()
+        edge_attr_2d = batch.edge_attr[:, :, timestep].float()
+        edge_attr_1d = batch.edge_attr_1d[:, :, timestep].float()
 
-        # ===== 2D Edge Structure =====
-        edge_attr_2d = torch.cat(
-            [
-                graph.edge_attr[:, : self.start_edge_target_idx],
-                edge_sliding_window,
-                graph.edge_attr[:, self.end_edge_target_idx :],
-            ],
-            dim=1,
-        )
-
-        # ===== 1D Edge Structure =====
-        edge_attr_1d = torch.cat(
-            [
-                graph.edge_attr_1d[:, : self.start_1d_edge_target_idx],
-                edge_sliding_window_1d,
-                graph.edge_attr_1d[:, self.end_1d_edge_target_idx :],
-            ],
-            dim=1,
-        )
-
+        # ── Feature alignment ─────────────────────────────────────────────────
         if self.feature_alignment == "inject_rainfall":
-            # print("Selected inject_rainfall feature alignment")  # --- IGNORE ---
-            x_2d, x_1d, edge_attr_2d, edge_attr_1d = self.feature_aligner.inject_nearest_rainfall_to_1d(
-                x_2d, x_1d, edge_attr_2d, edge_attr_1d
+            x_2d, x_1d, edge_attr_2d, edge_attr_1d = (
+                self.feature_aligner.inject_nearest_rainfall_to_1d(
+                    x_2d, x_1d, edge_attr_2d, edge_attr_1d
+                )
             )
         elif self.feature_alignment == "common_no_rainfall_1d":
-            # print("Selected common feature no rainfall 1d alignment")  # --- IGNORE ---
-            x_2d, x_1d, edge_attr_2d, edge_attr_1d = self.feature_aligner.align_common_features_no_rainfall_1d(
-                x_2d, x_1d, edge_attr_2d, edge_attr_1d
+            x_2d, x_1d, edge_attr_2d, edge_attr_1d = (
+                self.feature_aligner.align_common_features_no_rainfall_1d(
+                    x_2d, x_1d, edge_attr_2d, edge_attr_1d
+                )
             )
         elif self.feature_alignment == "common":
-            # print("Selected common feature alignment")  # --- IGNORE ---
-            x_2d, x_1d, edge_attr_2d, edge_attr_1d = self.feature_aligner.align_common_features(
-                x_2d, x_1d, edge_attr_2d, edge_attr_1d
+            x_2d, x_1d, edge_attr_2d, edge_attr_1d = (
+                self.feature_aligner.align_common_features(
+                    x_2d, x_1d, edge_attr_2d, edge_attr_1d
+                )
             )
-
-        hetero_data["2d"].x = x_2d
+        # ── Populate HeteroData ───────────────────────────────────────────────
+        hetero_data["2d"].x         = x_2d
         hetero_data["2d"].num_nodes = x_2d.shape[0]
-        hetero_data["1d"].x = x_1d
+        hetero_data["1d"].x         = x_1d
         hetero_data["1d"].num_nodes = x_1d.shape[0]
-        hetero_data["2d", "connects", "2d"].edge_index = graph.edge_index
-        hetero_data["2d", "connects", "2d"].edge_attr = edge_attr_2d
-        hetero_data["1d", "connects", "1d"].edge_index = graph.edge_index_1d
-        hetero_data["1d", "connects", "1d"].edge_attr = edge_attr_1d
-        hetero_data["1d", "couples", "2d"].edge_index = graph.edge_index_1d_2d
+
+        hetero_data["2d", "connects", "2d"].edge_index = batch.edge_index
+        hetero_data["2d", "connects", "2d"].edge_attr  = edge_attr_2d
+        hetero_data["1d", "connects", "1d"].edge_index = batch.edge_index_1d
+        hetero_data["1d", "connects", "1d"].edge_attr  = edge_attr_1d
+        hetero_data["1d", "couples",  "2d"].edge_index = batch.edge_index_1d_2d
         # Not adding reverse edges because water flows from 1D to 2D
         # hetero_data['2d', 'rev_couples', '1d'].edge_index = batch.edge_index_1d_2d.flip(0)
 
-        # Store batch information if present
-        if hasattr(graph, "batch"):
-            hetero_data["2d"].batch = graph.batch
-        if hasattr(graph, "batch_1d"):
-            hetero_data["1d"].batch = graph.batch_1d
-
-        return hetero_data
-
-    def _update_hetero_sliding_windows(
-        self,
-        hetero_data: HeteroData,
-        sliding_window: Tensor,
-        sliding_window_1d: Tensor,
-        edge_sliding_window: Tensor,
-        edge_sliding_window_1d: Tensor,
-    ) -> HeteroData:
-        """Update HeteroData node and edge features with sliding windows."""
-
-        # Update 2D node features with sliding window
-        x_2d = hetero_data["2d"].x
-        hetero_data["2d"].x = torch.cat(
-            [
-                x_2d[:, : self.start_node_target_idx],
-                sliding_window,
-                x_2d[:, self.end_node_target_idx :],
-            ],
-            dim=1,
-        )
-
-        # Update 1D node features with sliding window
-        x_1d = hetero_data["1d"].x
-        hetero_data["1d"].x = torch.cat(
-            [
-                x_1d[:, : self.start_1d_node_target_idx],
-                sliding_window_1d,
-                x_1d[:, self.end_1d_node_target_idx :],
-            ],
-            dim=1,
-        )
-
-        # Update 2D edge features with sliding window
-        edge_attr_2d = hetero_data["2d", "connects", "2d"].edge_attr
-        hetero_data["2d", "connects", "2d"].edge_attr = torch.cat(
-            [
-                edge_attr_2d[:, : self.start_edge_target_idx],
-                edge_sliding_window,
-                edge_attr_2d[:, self.end_edge_target_idx :],
-            ],
-            dim=1,
-        )
-
-        # Update 1D edge features with sliding window
-        edge_attr_1d = hetero_data["1d", "connects", "1d"].edge_attr
-        hetero_data["1d", "connects", "1d"].edge_attr = torch.cat(
-            [
-                edge_attr_1d[:, : self.start_1d_edge_target_idx],
-                edge_sliding_window_1d,
-                edge_attr_1d[:, self.end_1d_edge_target_idx :],
-            ],
-            dim=1,
-        )
+        # Store batch information
+        if hasattr(batch, "batch"):
+            hetero_data["2d"].batch = batch.batch
+        if hasattr(batch, "batch_1d"):
+            hetero_data["1d"].batch = batch.batch_1d
 
         return hetero_data
 
@@ -474,6 +379,7 @@ class HeteroNodeEdgeAutoregressive1D2DTrainer(
             dataset=self.val_dataset,
             include_physics_loss=False,
             device=self.device,
+            feature_alignment=self.feature_alignment,
         )
         with open(os.devnull, "w") as f, redirect_stdout(f):
             val_tester.test()

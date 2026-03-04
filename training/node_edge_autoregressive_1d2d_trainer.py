@@ -258,6 +258,11 @@ class NodeEdgeAutoregressive1D2DTrainer(
                     x, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.align_common_features_no_rainfall_1d(
                         x, x_1d, edge_attr, edge_attr_1d
                     )
+                elif self.feature_alignment == "common":
+                    # print("Selected common feature alignment")  # --- IGNORE ---
+                    x, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.align_common_features(
+                        x, x_1d, edge_attr, edge_attr_1d
+                    )
 
                 pred_diff, pred_diff_1d = self.model(
                     x,
@@ -380,6 +385,7 @@ class NodeEdgeAutoregressive1D2DTrainer(
             dataset=self.val_dataset,
             include_physics_loss=False,
             device=self.device,
+            feature_alignment=self.feature_alignment,
         )
         with open(os.devnull, "w") as f, redirect_stdout(f):
             val_tester.test()

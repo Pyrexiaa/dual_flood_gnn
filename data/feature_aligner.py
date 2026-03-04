@@ -765,42 +765,20 @@ class BatchTensorAligner:
     ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         """
         Append the nearest 2D node's extrapolatable dynamic features (e.g. rainfall)
-        as extra columns to x_1d. Everything else is returned unchanged.
+        as extra columns to x_1d, including the FULL window history (W slots each).
 
-        x and x_1d are kept in their original raw feature format — no schema
-        intersection or column reordering is applied. Only x_1d gains new columns.
-
-        Use this when:
-        - Your model already handles heterogeneous feature sizes between 1D and 2D.
-        - You simply want 1D nodes to receive rainfall (or other 2D-only dynamic
-        forcings) without projecting onto a shared schema.
-        - You want the minimal-impact augmentation: one extra feature appended,
-        nothing else changed.
-
-        Args:
-            x            : [N_2d, F_2d]   raw 2D node features (unchanged)
-            x_1d         : [N_1d, F_1d]   raw 1D node features
-            edge_attr    : [E_2d, Fe_2d]  raw 2D edge features (unchanged)
-            edge_attr_1d : [E_1d, Fe_1d]  raw 1D edge features (unchanged)
-
-        Returns:
-            x                    : [N_2d, F_2d]        unchanged
-            x_1d_augmented       : [N_1d, F_1d + F_extrap]  x_1d with rainfall appended
-            edge_attr            : [E_2d, Fe_2d]        unchanged
-            edge_attr_1d         : [E_1d, Fe_1d]        unchanged
+        x_1d gains F_extrap * W new columns, matching the windowed layout of all
+        other dynamic features — so the model can treat injected rainfall identically
+        to native 1D dynamic features.
 
         Output x_1d column order:
-            [original_1d_features... | extrapolated_dynamic_from_2d...]
+            [original_1d_features... | extrap_feat_0_slot_0 | ... | extrap_feat_0_slot_W-1 | ...]
         """
         if (
             self._nearest_2d_idx is None
             or len(self._extrap_dynamic_node_cols_2d) == 0
         ):
-            # Nothing to inject — return inputs as-is
             return x, x_1d, edge_attr, edge_attr_1d
-
-        # Extract the extrapolatable features (e.g. rainfall) from 2D nodes
-        extrap_from_2d = x[:, self._extrap_dynamic_node_cols_2d]   # [N_2d*B, F_extrap]
 
         # Build batch-aware nearest-neighbour index
         batch_size    = x_1d.size(0) // self._n_1d_single
@@ -810,10 +788,30 @@ class BatchTensorAligner:
             + offsets.unsqueeze(1)              # [B,  1  ]
         ).reshape(-1)                           # [N_1d * B]
 
-        # Look up the nearest 2D value for each 1D node
-        extrap_for_1d = extrap_from_2d[nearest_tiled]              # [N_1d*B, F_extrap]
+        # For each extrapolatable feature, collect ALL W window slots from 2D
+        # Layout in x: [static | dyn_0_slot_0 | ... | dyn_0_slot_W-1 | dyn_1_slot_0 | ...]
+        window_cols_per_feature = []
+        for i, f in enumerate(self._dynamic_2d):
+            if f not in {self._canonical(g) for g in self._dynamic_1d}:
+                # All W slots for this feature
+                slots = [
+                    self._n_static_2d + i * self._window_size + slot
+                    for slot in range(self._window_size)
+                ]
+                window_cols_per_feature.append(
+                    torch.tensor(slots, dtype=torch.long, device=x.device)
+                )
 
-        # Append to 1D nodes; leave everything else untouched
+        if not window_cols_per_feature:
+            return x, x_1d, edge_attr, edge_attr_1d
+
+        # Gather all window columns: [N_2d*B, F_extrap * W]
+        all_window_cols = torch.cat(window_cols_per_feature)          # [F_extrap * W]
+        extrap_windowed = x[:, all_window_cols]                       # [N_2d*B, F_extrap*W]
+
+        # Look up nearest 2D values for each 1D node
+        extrap_for_1d = extrap_windowed[nearest_tiled]                # [N_1d*B, F_extrap*W]
+
         x_1d_augmented = torch.cat([x_1d, extrap_for_1d], dim=-1)
 
         return x, x_1d_augmented, edge_attr, edge_attr_1d

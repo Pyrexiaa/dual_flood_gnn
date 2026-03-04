@@ -29,7 +29,6 @@ from models import model_factory
 from typing import Dict, Optional
 from utils import Logger, file_utils
 
-
 def compute_aligned_feature_sizes(
     dataset,
     alignment: str,  # "common" | "extrapolate" | "align2d"
@@ -53,6 +52,8 @@ def compute_aligned_feature_sizes(
         input_features = aligner.node_feature_size_with_extrapolation
     elif alignment == "align2d":
         input_features = aligner.node_feature_size_full_2d
+    elif alignment == "common_no_rainfall_1d":
+        input_features = aligner.node_feature_size_common_no_rainfall_1d
     else:
         raise ValueError(f"Unknown alignment method: {alignment!r}")
 
@@ -212,9 +213,9 @@ def main():
         logger.log(f"Loaded dataset with {len(dataset)} samples")
 
         # Compute the input features
-        if config["training_parameters"]["feature_alignment"] is not None:
+        if config['training_parameters']['feature_alignment'] is not None and config['training_parameters']['feature_alignment'] != "inject_rainfall":
             input_align_features, input_align_edge_features = compute_aligned_feature_sizes(
-                dataset, alignment=config["training_parameters"]["feature_alignment"]
+                dataset, alignment=config['training_parameters']['feature_alignment']
             )
 
         # Load model
@@ -226,7 +227,7 @@ def main():
             "static_edge_features": dataset.num_static_edge_features,
             "dynamic_edge_features": dataset.num_dynamic_edge_features,
             "static_1d_node_features": dataset.num_static_1d_node_features,
-            "dynamic_1d_node_features": dataset.num_dynamic_1d_node_features,
+            "dynamic_1d_node_features": int(dataset.num_dynamic_1d_node_features + 1) if config['training_parameters']['feature_alignment'] == 'inject_rainfall' else dataset.num_dynamic_1d_node_features,
             "static_1d_edge_features": dataset.num_static_1d_edge_features,
             "dynamic_1d_edge_features": dataset.num_dynamic_1d_edge_features,
             "previous_timesteps": previous_timesteps,
@@ -236,8 +237,8 @@ def main():
             **model_params,
             **base_model_params,
             # Override whatever input_features model_params had with the aligned sizes
-            "input_align_features": input_align_features if config["training_parameters"]["feature_alignment"] is not None else None,
-            "input_align_edge_features": input_align_edge_features if config["training_parameters"]["feature_alignment"] is not None else None,
+            'input_align_features': input_align_features if config['training_parameters']['feature_alignment'] is not None and config['training_parameters']['feature_alignment'] != 'inject_rainfall' else None,
+            'input_align_edge_features': input_align_edge_features if config['training_parameters']['feature_alignment'] is not None and config['training_parameters']['feature_alignment'] != 'inject_rainfall' else None,
         }
         model = model_factory(args.model, **model_config)
         model.load_state_dict(torch.load(args.model_path, weights_only=True))

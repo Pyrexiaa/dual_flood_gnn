@@ -71,7 +71,7 @@ training_parameters:
   gradient_clip_value : 1.0                                  # Gradient clipping value. If set to null, no gradient clipping is applied
   early_stopping_patience: 20                                # Early stopping patience in number of epochs. If set to null, no early stopping is applied
   val_split_percent  : 0.1                                   # Percentage of validation split for autoregressive training
-  feature_alignment: 'common_no_rainfall_1d'
+  feature_alignment: 'inject_rainfall'
 
   autoregressive:
     enabled            : True                               # Enable autoregressive training
