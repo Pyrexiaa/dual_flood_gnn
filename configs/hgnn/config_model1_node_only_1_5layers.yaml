@@ -10,9 +10,27 @@ dataset_parameters:
   perimeter_name: 'US Beaver'  
   network_name: 'Base'                                      # Filename of DEM file
   model_name: 'Model1'
-  features_stats_file: 'features_stats.yaml'                 # Filename for the yaml file containing feature statistics (mean, std, min, max). Generated when initializing the dataset
+  features_stats_file: 'features_stats.yaml'                # Filename for the yaml file containing feature statistics (mean, std, min, max). Generated when initializing the dataset
+  node_1d_mapping:
+    0: 0
+    1: 12
+    2: 15
+    3: 4
+    4: 5
+    5: 7
+    6: 10
+    7: 9
+    8: 11
+    9: 13
+    10: 14
+    11: 16
+    12: 3
+    13: 2
+    14: 6
+    15: 8
+    16: 1                   
 
-  previous_timesteps: 7                                      # Number of previous timesteps to consider for input features
+  previous_timesteps: 1                                      # Number of previous timesteps to consider for input features
   normalize: True                                            # Whether to normalize features
   timestep_interval: 300                                     # Interval between timesteps in seconds
   spin_up_time: 14400                                       # Spin up time in seconds. Used to trim the beginning of the flood event. Can be defined per Run ID
@@ -53,12 +71,13 @@ training_parameters:
   gradient_clip_value : 1.0                                  # Gradient clipping value. If set to null, no gradient clipping is applied
   early_stopping_patience: 20                                # Early stopping patience in number of epochs. If set to null, no early stopping is applied
   val_split_percent  : 0.1                                   # Percentage of validation split for autoregressive training
+  feature_alignment: null
 
   autoregressive:
     enabled            : True                               # Enable autoregressive training
-    init_num_timesteps : 1                                   # Initial number of timesteps for autoregressive training
+    init_num_timesteps : 2                                   # Initial number of timesteps for autoregressive training
     total_num_timesteps: 6                                   # Total number of timesteps for autoregressive training
-    timestep_increment : 1                                   # Number of timesteps to increase after each curriculum step
+    timestep_increment : 2                                   # Number of timesteps to increase after each curriculum step
     max_curriculum_epochs: 100                               # Maximum number of curriculum steps
     learning_rate_decay  : 0.9                               # Learning rate decay factor after each curriculum step
 
@@ -241,6 +260,11 @@ model_parameters:                                            # Model-specific pa
     coupling_hidden: 128
     use_coupling_gate: True
     use_layer_norm: True
+
+  DUALFloodHGNN1D2D:
+    hidden_features: 128
+    num_layers: 5
+    activation: 'relu'
 
   NodeEdgeGNNAttn:
     hidden_features: 64

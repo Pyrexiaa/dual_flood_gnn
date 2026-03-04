@@ -28,8 +28,7 @@ dataset_parameters:
     13: 2
     14: 6
     15: 8
-    16: 1                      
-  alignment_method: 'common'
+    16: 1                   
 
   previous_timesteps: 1                                      # Number of previous timesteps to consider for input features
   normalize: True                                            # Whether to normalize features

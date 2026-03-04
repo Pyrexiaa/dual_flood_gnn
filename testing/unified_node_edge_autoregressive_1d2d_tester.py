@@ -174,6 +174,11 @@ class UnifiedNodeEdgeAutoregressive1D2DTester(Base1D2DTester):
                     x, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.align_common_features(
                         x, x_1d, edge_attr, edge_attr_1d
                     )
+                elif self.feature_alignment == "common_no_rainfall_1d":
+                    # print("Selected common feature no rainfall 1d alignment")  # --- IGNORE ---
+                    x, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.align_common_features_no_rainfall_1d(
+                        x, x_1d, edge_attr, edge_attr_1d
+                    )
                 elif self.feature_alignment == "extrapolate":
                     # print("Selected extrapolate feature alignment")  # --- IGNORE ---
                     x, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.align_with_extrapolation(
@@ -182,6 +187,11 @@ class UnifiedNodeEdgeAutoregressive1D2DTester(Base1D2DTester):
                 elif self.feature_alignment == "align2d":
                     # print("Selected align2d feature alignment")  # --- IGNORE ---
                     x, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.align_1d_to_full_2d_schema(
+                        x, x_1d, edge_attr, edge_attr_1d
+                    )
+                elif self.feature_alignment == "inject_rainfall":
+                     # print("Selected inject_rainfall feature alignment")  # --- IGNORE ---
+                    _, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.inject_nearest_rainfall_to_1d(
                         x, x_1d, edge_attr, edge_attr_1d
                     )
 

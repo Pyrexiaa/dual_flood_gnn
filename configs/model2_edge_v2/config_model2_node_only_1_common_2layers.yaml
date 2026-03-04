@@ -1,36 +1,223 @@
 dataset_parameters:
   storage_mode: 'memory'                                     # 'memory' or 'disk'. Where to load the dataset
-  root_dir: 'data/model1'                                  # Path to root directory for the dataset files
+  root_dir: 'data/model2'                                  # Path to root directory for the dataset files
   nodes_1d_shp_file: 'Geometry/Nodes_1D.shp'                 # Filename of shapefile containing node information
   nodes_2d_shp_file: 'Geometry/Nodes_2D.shp'                 # Filename of shapefile containing node information
   edges_1d_shp_file: 'Geometry/Links_1D.shp'                 # Filename of shapefile containing edge information
   edges_2d_shp_file: 'Geometry/Links_2D.shp'                 # Filename of shapefile containing edge information
   edges_1d2d_shp_file: 'Geometry/Node1D_to_Node2D_Links.shp' # Filename of shapefile containing edge information
   dem_file: 'Geometry/DEM.tif'    
-  perimeter_name: 'US Beaver'  
-  network_name: 'Base'                                      # Filename of DEM file
-  model_name: 'Model1'
+  perimeter_name: 'Davis'  
+  network_name: 'Davis'                                      # Filename of DEM file
+  model_name: 'Model2'
   features_stats_file: 'features_stats.yaml'                 # Filename for the yaml file containing feature statistics (mean, std, min, max). Generated when initializing the dataset
+  node_1d_mapping:
+    0: 108
+    1: 25
+    2: 37
+    3: 42
+    4: 121
+    5: 84
+    6: 120
+    7: 131
+    8: 64
+    9: 83
+    10: 119
+    11: 82
+    12: 61
+    13: 118
+    14: 116
+    15: 81
+    16: 104
+    17: 80
+    18: 15
+    19: 60
+    20: 103
+    21: 59
+    22: 79
+    23: 58
+    24: 78
+    25: 87
+    26: 21
+    27: 57
+    28: 77
+    29: 102
+    30: 115
+    31: 41
+    32: 40
+    33: 56
+    34: 101
+    35: 100
+    36: 130
+    37: 55
+    38: 76
+    39: 99
+    40: 75
+    41: 129
+    42: 134
+    43: 30
+    44: 39
+    45: 136
+    46: 135
+    47: 106
+    48: 122
+    49: 128
+    50: 54
+    51: 62
+    52: 74
+    53: 98
+    54: 53
+    55: 97
+    56: 127
+    57: 114
+    58: 73
+    59: 72
+    60: 126
+    61: 52
+    62: 71
+    63: 48
+    64: 47
+    65: 51
+    66: 70
+    67: 86
+    68: 96
+    69: 95
+    70: 113
+    71: 125
+    72: 132
+    73: 17
+    74: 94
+    75: 93
+    76: 69
+    77: 92
+    78: 35
+    79: 133
+    80: 112
+    81: 68
+    82: 67
+    83: 124
+    84: 5
+    85: 1
+    86: 110
+    87: 65
+    88: 91
+    89: 66
+    90: 24
+    91: 50
+    92: 109
+    93: 23
+    94: 123
+    95: 85
+    96: 46
+    97: 45
+    98: 22
+    99: 38
+    100: 36
+    101: 49
+    102: 107
+    103: 90
+    104: 63
+    105: 19
+    106: 89
+    107: 34
+    108: 33
+    109: 32
+    110: 31
+    111: 88
+    112: 29
+    113: 18
+    114: 14
+    115: 9
+    116: 28
+    117: 16
+    118: 8
+    119: 2
+    120: 3
+    121: 0
+    122: 105
+    123: 20
+    124: 43
+    125: 44
+    126: 27
+    127: 26
+    128: 11
+    129: 12
+    130: 13
+    131: 6
+    132: 4
+    133: 137
+    134: 138
+    135: 139
+    136: 140
+    137: 141
+    138: 142
+    139: 143
+    140: 144
+    141: 111
+    142: 145
+    143: 146
+    144: 147
+    145: 10
+    146: 148
+    147: 149
+    148: 150
+    149: 151
+    150: 152
+    151: 153
+    152: 154
+    153: 155
+    154: 156
+    155: 157
+    156: 158
+    157: 159
+    158: 160
+    159: 161
+    160: 162
+    161: 163
+    162: 164
+    163: 165
+    164: 166
+    165: 167
+    166: 168
+    167: 169
+    168: 117
+    169: 170
+    170: 171
+    171: 172
+    172: 173
+    173: 174
+    174: 175
+    175: 176
+    176: 177
+    177: 178
+    178: 179
+    179: 180
+    180: 181
+    181: 182
+    182: 184
+    183: 185
+    184: 183
+    185: 186
+    186: 187
+    187: 188
+    188: 189
+    189: 190
+    190: 191
+    191: 192
+    192: 7
+    193: 193
+    194: 194
+    195: 195
+    196: 196
+    197: 197
 
-  previous_timesteps: 3                                      # Number of previous timesteps to consider for input features
+  previous_timesteps: 1                                      # Number of previous timesteps to consider for input features
   normalize: True                                            # Whether to normalize features
   timestep_interval: 300                                     # Interval between timesteps in seconds
-  spin_up_time: 14400                                       # Spin up time in seconds. Used to trim the beginning of the flood event. Can be defined per Run ID
+  spin_up_time: 10800                                       # Spin up time in seconds. Used to trim the beginning of the flood event. Can be defined per Run ID
   time_from_peak: null                                       # Time after peak flow to consider in data in seconds. Used to trim the end of the flood event. Set to null to include the entire event
   inflow_boundary_nodes: null                                # List of inflow boundary node IDs for boundary conditions
-  outflow_boundary_nodes:                                    # List of outflow boundary node IDs for boundary conditions
-  - 3741
-  - 3742
-  - 3745
-  - 3748
-  - 3749
-  - 3751
-  - 3756
-  - 3757
-  - 3761
-  - 3762
-  - 3763
-  - 3764
+  outflow_boundary_nodes: null
 
   training:
     dataset_summary_file: 'train.csv'                        # Filename of csv file containing the list of training flood events (Run IDs and HEC-RAS file paths)
@@ -45,14 +232,15 @@ training_parameters:
   model_dir            : 'saved_models'                      # Path to directory to save trained models
   stats_dir            : 'training_stats'                    # Path to directory to save training statistics
   checkpoint_path      : null                                # Path to load a pre-trained model; If set to null, no pre-trained model is loaded
-  num_epochs           : 300                                  # Number of epochs
-  num_epochs_dyn_loss  : 0                               # Number of epochs to determine loss scaling ratios dynamically. Usually 10 epochs is sufficient
+  num_epochs           : 300                                # Number of epochs
+  num_epochs_dyn_loss  : 0                                  # Number of epochs to determine loss scaling ratios dynamically. Usually 10 epochs is sufficient
   batch_size           : 32                                  # Batch size
   learning_rate        : 0.0001                              # Learning rate
   adam_weight_decay    : 0                                   # Weight decay
   gradient_clip_value : 0.5                                  # Gradient clipping value. If set to null, no gradient clipping is applied
   early_stopping_patience: 15                                # Early stopping patience in number of epochs. If set to null, no early stopping is applied
   val_split_percent  : 0.1                                   # Percentage of validation split for autoregressive training
+  feature_alignment: 'common'
 
   autoregressive:
     enabled            : True                               # Enable autoregressive training
@@ -60,7 +248,7 @@ training_parameters:
     total_num_timesteps: 6                                   # Total number of timesteps for autoregressive training
     timestep_increment : 2                                   # Number of timesteps to increase after each curriculum step
     max_curriculum_epochs: 100                               # Maximum number of curriculum steps
-    learning_rate_decay  : 0.7                               # Learning rate decay factor after each curriculum step
+    learning_rate_decay  : 0.9                               # Learning rate decay factor after each curriculum step
 
 loss_func_parameters:
   node_loss: 'mse'                                           # Loss function for node features. Options: 'mse', 'mae', 'huber'
@@ -228,15 +416,34 @@ model_parameters:                                            # Model-specific pa
     decoder_activation: 'relu'
 
   DUALFloodGNNNode1D2D:
-    hidden_features: 64
-    num_layers: 3
+    hidden_features: 128
+    num_layers: 2
     activation: 'relu'
     residual: True
-    mlp_layers: 3
-    encoder_layers: 3
+    mlp_layers: 2
+    encoder_layers: 2
     encoder_activation: 'relu'
-    decoder_layers: 3
+    decoder_layers: 2
     decoder_activation: 'relu'
+    coupling_layers: 2
+    coupling_hidden: 128
+    use_coupling_gate: True
+    use_layer_norm: True
+
+  DUALFloodGNNNodeEdge1D2D:
+    hidden_features: 128
+    num_layers: 2
+    activation: 'relu'
+    residual: True
+    mlp_layers: 2
+    encoder_layers: 2
+    encoder_activation: 'relu'
+    decoder_layers: 2
+    decoder_activation: 'relu'
+    coupling_layers: 2
+    coupling_hidden: 128
+    use_coupling_gate: True
+    use_layer_norm: True
 
   NodeEdgeGNNAttn:
     hidden_features: 64

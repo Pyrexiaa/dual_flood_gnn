@@ -705,211 +705,267 @@ def plot_per_node_metric_distributions(csv_path="gru_test_predictions_test.csv")
 
 
 def explain_rmse_calculation(
-    csv_path="gru_test_predictions_test.csv",
+    pred_csv_path,
+    gt_csv_path,
     show_top_contributors=20,
     std_dev_dict=None,
 ):
     """
-    Detailed breakdown of how hierarchical RMSE is calculated.
-    Shows per-node RMSE, per-event RMSE, and overall metrics.
+    Detailed breakdown of how hierarchical RMSE is calculated, split into 6 readings:
+      1. Public Overall Standardized RMSE
+      2. Private Overall Standardized RMSE
+      3. Public 1D (node_type=1) Standardized RMSE
+      4. Public 2D (node_type=2) Standardized RMSE
+      5. Private 1D (node_type=1) Standardized RMSE
+      6. Private 2D (node_type=2) Standardized RMSE
 
     Args:
-        csv_path: Path to predictions CSV file
-        show_top_contributors: Number of nodes to show in detailed breakdown
+        pred_csv_path: Path to predictions CSV file
+                       Expected columns: row_id, model_id, event_id, node_type, node_id, water_level
+        gt_csv_path:   Path to ground truth CSV file
+                       Expected columns: row_id, model_id, event_id, node_type, node_id,
+                                         target_water_level, Usage
+        show_top_contributors: Number of worst-performing nodes to show per group
         std_dev_dict: Dictionary of standard deviations for standardization
-                     Format: {(model_id, node_type): std_dev}
+                      Format: {(model_id, node_type): std_dev}
+
+    Returns:
+        dict with keys:
+            public_overall, private_overall,
+            public_1d, public_2d,
+            private_1d, private_2d
     """
-    # Default std_dev values from the evaluation script
+    # ------------------------------------------------------------------ #
+    # Default std_dev values
+    # ------------------------------------------------------------------ #
     if std_dev_dict is None:
         std_dev_dict = {
-            (1, 1): 16.877747,  # Model 1, Node type 1
-            (1, 2): 14.378797,  # Model 1, Node type 2
-            (2, 1): 3.191784,  # Model 2, Node type 1
-            (2, 2): 2.727131,  # Model 2, Node type 2
+            (1, 1): 16.877747,
+            (1, 2): 14.378797,
+            (2, 1): 3.191784,
+            (2, 2): 2.727131,
         }
 
-    df = pd.read_csv(csv_path)
+    # ------------------------------------------------------------------ #
+    # Load & merge
+    # ------------------------------------------------------------------ #
+    pred_df = pd.read_csv(pred_csv_path)
+    gt_df = pd.read_csv(gt_csv_path)
+    gt_df.rename(columns={"water_level": "target_water_level"}, inplace=True)
 
-    # Check if event_id exists, if not create a single event
+    # Identify the join keys available in both files
+    join_keys = ["row_id"]
+    for col in ["model_id", "event_id", "node_type", "node_id"]:
+        if col in pred_df.columns and col in gt_df.columns:
+            join_keys.append(col)
+
+    # Keep only necessary columns from each side before merging
+    gt_cols = join_keys + [
+        c for c in ["target_water_level", "Usage"] if c in gt_df.columns
+    ]
+    pred_cols = join_keys + ["water_level"]
+
+    df = pd.merge(
+        pred_df[pred_cols],
+        gt_df[gt_cols],
+        on=join_keys,
+        how="inner",
+    )
+
+    # Fallbacks if certain columns are absent
     if "event_id" not in df.columns:
         df["event_id"] = 1
-        print("Note: No event_id column found, treating all data as single event\n")
-
-    # Check if model_id exists, if not default to 1
+        print("Note: No event_id column - treating all data as single event\n")
     if "model_id" not in df.columns:
         df["model_id"] = 1
-        print("Note: No model_id column found, defaulting to model_id=1\n")
+        print("Note: No model_id column - defaulting to model_id=1\n")
+    if "Usage" not in df.columns:
+        df["Usage"] = "Public"
+        print("Note: No Usage column - treating all rows as Public\n")
 
     print("=" * 80)
     print("HIERARCHICAL RMSE CALCULATION BREAKDOWN")
     print("=" * 80)
-    print("\nCalculation Structure:")
-    print("  1. Per-node RMSE: RMSE for each node within an event")
-    print("  2. Per-event Standardized RMSE: Average of standardized per-node RMSEs")
-    print("  3. Per-model RMSE: Average across all events for each model")
-    print("  4. Final Score: Average across all models")
-    print("\nFormulas:")
-    print("  RMSE = √(mean((y_true - y_pred)²))")
-    print("  Standardized RMSE = RMSE / std_dev")
-    print("  std_dev is specific to (model_id, node_type) combination\n")
+    print(f"Total rows after merge  : {len(df):,}")
+    print(f"Models                  : {sorted(df['model_id'].unique())}")
+    print(f"Events                  : {sorted(df['event_id'].unique())}")
+    print(f"Node types              : {sorted(df['node_type'].unique())}")
+    print(f"Unique nodes            : {df['node_id'].nunique()}")
+    print(f"Usage split             : {df['Usage'].value_counts().to_dict()}")
 
-    # Overall statistics
-    print("=" * 80)
-    print("DATASET OVERVIEW")
-    print("=" * 80)
-    print(f"Total samples: {len(df):,}")
-    print(f"Models: {sorted(df['model_id'].unique())}")
-    print(f"Events: {sorted(df['event_id'].unique())}")
-    print(f"Node types: {sorted(df['node_type'].unique())}")
-    print(f"Unique nodes: {df['node_id'].nunique()}")
+    # ------------------------------------------------------------------ #
+    # Helper: compute hierarchical standardized RMSE for a sub-dataframe
+    # Hierarchy: model -> event -> node_type -> node -> average back up
+    # ------------------------------------------------------------------ #
+    def compute_hierarchical_std_rmse(sub_df, label=""):
+        """Returns (overall_score, score_1d, score_2d)."""
+        if sub_df.empty:
+            return np.nan, np.nan, np.nan
 
-    # Process each model
-    model_scores = []
+        model_scores = []
+        model_scores_1d = []
+        model_scores_2d = []
 
-    for model_id in sorted(df["model_id"].unique()):
-        df_model = df[df["model_id"] == model_id]
+        for model_id in sorted(sub_df["model_id"].unique()):
+            df_model = sub_df[sub_df["model_id"] == model_id]
+            event_std_rmses = []
+            event_std_rmses_1d = []
+            event_std_rmses_2d = []
 
-        print("\n" + "=" * 80)
-        print(f"MODEL {model_id} ANALYSIS")
-        print("=" * 80)
+            for event_id in sorted(df_model["event_id"].unique()):
+                df_event = df_model[df_model["event_id"] == event_id]
+                node_type_std_rmses = []
 
-        event_std_rmses = []
+                nt_scores = {}  # node_type -> avg_std_rmse
 
-        # Process each event
-        for event_id in sorted(df_model["event_id"].unique()):
-            df_event = df_model[df_model["event_id"] == event_id]
-
-            print(f"\n--- Event {event_id} (Model {model_id}) ---")
-            print(f"Total samples in event: {len(df_event):,}")
-
-            # Process each node type
-            node_type_std_rmses = []
-
-            for node_type in [1, 2]:
-                df_type = df_event[df_event["node_type"] == node_type]
-
-                if len(df_type) == 0:
-                    continue
-
-                node_type_str = "1D" if node_type == 1 else "2D"
-                std_dev = std_dev_dict.get((model_id, node_type), np.nan)
-
-                print(f"\n  {node_type_str} Nodes:")
-                print(f"    Standard deviation: {std_dev:.6f}")
-                print(f"    Total samples: {len(df_type):,}")
-                print(f"    Unique nodes: {df_type['node_id'].nunique()}")
-
-                # Calculate per-node RMSE
-                node_rmses = []
-                node_std_rmses = []
-                node_details = []
-
-                for node_id in df_type["node_id"].unique():
-                    node_data = df_type[df_type["node_id"] == node_id]
-
-                    if len(node_data) <= 1:
+                for node_type in [1, 2]:
+                    df_type = df_event[df_event["node_type"] == node_type]
+                    if df_type.empty:
                         continue
 
-                    targets = node_data["target_water_level"].values
-                    preds = node_data["water_level"].values
+                    std_dev = std_dev_dict.get((model_id, node_type), np.nan)
+                    node_std_rmses = []
 
-                    # Calculate RMSE for this node
-                    node_rmse = rmse(targets, preds)
-                    node_rmses.append(node_rmse)
+                    for node_id in df_type["node_id"].unique():
+                        node_data = df_type[df_type["node_id"] == node_id]
+                        if len(node_data) <= 1:
+                            continue
+                        targets = node_data["target_water_level"].values
+                        preds = node_data["water_level"].values
+                        nsr = standardized_rmse(targets, preds, std_dev)
+                        if not np.isnan(nsr):
+                            node_std_rmses.append(nsr)
 
-                    # Calculate standardized RMSE
-                    node_std_rmse = standardized_rmse(targets, preds, std_dev)
-                    if not np.isnan(node_std_rmse):
-                        node_std_rmses.append(node_std_rmse)
+                    if node_std_rmses:
+                        avg = np.mean(node_std_rmses)
+                        node_type_std_rmses.append(avg)
+                        nt_scores[node_type] = avg
 
-                    # Collect details
-                    node_details.append(
-                        {
-                            "node_id": node_id,
-                            "n_samples": len(targets),
-                            "target_mean": targets.mean(),
-                            "pred_mean": preds.mean(),
-                            "target_std": targets.std(),
-                            "pred_std": preds.std(),
-                            "rmse": node_rmse,
-                            "std_rmse": node_std_rmse,
-                            "mae": np.mean(np.abs(targets - preds)),
-                        }
-                    )
+                if node_type_std_rmses:
+                    event_std_rmses.append(np.mean(node_type_std_rmses))
+                if 1 in nt_scores:
+                    event_std_rmses_1d.append(nt_scores[1])
+                if 2 in nt_scores:
+                    event_std_rmses_2d.append(nt_scores[2])
 
-                if node_std_rmses:
-                    # Average standardized RMSE for this node type
-                    avg_std_rmse = np.mean(node_std_rmses)
-                    node_type_std_rmses.append(avg_std_rmse)
+            if event_std_rmses:
+                model_scores.append(np.mean(event_std_rmses))
+            if event_std_rmses_1d:
+                model_scores_1d.append(np.mean(event_std_rmses_1d))
+            if event_std_rmses_2d:
+                model_scores_2d.append(np.mean(event_std_rmses_2d))
 
-                    print(
-                        f"    Per-node RMSE range: {min(node_rmses):.4f} to {max(node_rmses):.4f}"
-                    )
-                    print(
-                        f"    Per-node Std RMSE range: {min(node_std_rmses):.4f} to {max(node_std_rmses):.4f}"
-                    )
-                    print(
-                        f"    Average Std RMSE for {node_type_str}: {avg_std_rmse:.6f}"
-                    )
+        overall = np.mean(model_scores) if model_scores else np.nan
+        score_1d = np.mean(model_scores_1d) if model_scores_1d else np.nan
+        score_2d = np.mean(model_scores_2d) if model_scores_2d else np.nan
+        return overall, score_1d, score_2d
 
-                    # Show top contributors (worst performing nodes)
-                    if len(node_details) > 0:
-                        details_df = pd.DataFrame(node_details)
-                        details_df = details_df.sort_values("std_rmse", ascending=False)
-
-                        print(
-                            f"\n    Top {min(show_top_contributors, len(details_df))} worst performing nodes:"
-                        )
-                        print(
-                            f"    {'Node':>6} | {'Samples':>7} | {'RMSE':>8} | {'Std RMSE':>9} | {'MAE':>8}"
-                        )
-                        print("    " + "-" * 58)
-
-                        for idx, row in details_df.head(
-                            show_top_contributors
-                        ).iterrows():
-                            print(
-                                f"    {row['node_id']:6.0f} | {row['n_samples']:7.0f} | "
-                                f"{row['rmse']:8.4f} | {row['std_rmse']:9.6f} | {row['mae']:8.4f}"
-                            )
-
-            # Calculate event-level standardized RMSE
-            if node_type_std_rmses:
-                event_std_rmse = np.mean(node_type_std_rmses)
-                event_std_rmses.append(event_std_rmse)
-                print(f"\n  Event {event_id} Standardized RMSE: {event_std_rmse:.6f}")
-
-        # Calculate model-level score
-        if event_std_rmses:
-            model_score = np.mean(event_std_rmses)
-            model_scores.append(model_score)
-
-            print(f"\n{'=' * 80}")
-            print(f"MODEL {model_id} SUMMARY:")
-            print(f"  Events processed: {len(event_std_rmses)}")
-            print(
-                f"  Event Std RMSE range: {min(event_std_rmses):.6f} to {max(event_std_rmses):.6f}"
-            )
-            print(f"  Model {model_id} Average Standardized RMSE: {model_score:.6f}")
-            print(f"{'=' * 80}")
-
-    # Final score
-    if model_scores:
-        final_score = np.mean(model_scores)
-
+    # ------------------------------------------------------------------ #
+    # Detailed per-node breakdown (mirrors original function)
+    # ------------------------------------------------------------------ #
+    def print_detailed_breakdown(sub_df, label):
         print("\n" + "=" * 80)
-        print("FINAL SCORE")
-        print("=" * 80)
-        print(f"Number of models: {len(model_scores)}")
-        for i, score in enumerate(model_scores, 1):
-            print(f"Model {i} Standardized RMSE: {score:.6f}")
-        print(f"\nFinal Score (average across models): {final_score:.6f}")
+        print(f"DETAILED BREAKDOWN — {label.upper()}")
         print("=" * 80)
 
-        return final_score
-    else:
-        print("\n⚠️ Could not calculate final score - no valid events processed")
-        return np.nan
+        for model_id in sorted(sub_df["model_id"].unique()):
+            df_model = sub_df[sub_df["model_id"] == model_id]
+            print(f"\n  Model {model_id}")
+
+            for event_id in sorted(df_model["event_id"].unique()):
+                df_event = df_model[df_model["event_id"] == event_id]
+                print(f"\n    Event {event_id}  ({len(df_event):,} samples)")
+
+                for node_type in [1, 2]:
+                    df_type = df_event[df_event["node_type"] == node_type]
+                    if df_type.empty:
+                        continue
+
+                    nt_str = "1D" if node_type == 1 else "2D"
+                    std_dev = std_dev_dict.get((model_id, node_type), np.nan)
+                    node_details = []
+
+                    for node_id in df_type["node_id"].unique():
+                        nd = df_type[df_type["node_id"] == node_id]
+                        if len(nd) <= 1:
+                            continue
+                        t = nd["target_water_level"].values
+                        p = nd["water_level"].values
+                        nr = rmse(t, p)
+                        ns = standardized_rmse(t, p, std_dev)
+                        node_details.append(
+                            {
+                                "node_id": node_id,
+                                "n_samples": len(t),
+                                "rmse": nr,
+                                "std_rmse": ns,
+                                "mae": np.mean(np.abs(t - p)),
+                            }
+                        )
+
+                    if not node_details:
+                        continue
+
+                    details_df = pd.DataFrame(node_details).sort_values(
+                        "std_rmse", ascending=False
+                    )
+                    avg_std = details_df["std_rmse"].mean()
+
+                    print(f"\n      {nt_str} Nodes  |  std_dev={std_dev:.6f}  |  "
+                          f"avg_std_rmse={avg_std:.6f}")
+                    print(
+                        f"      {'Node':>6} | {'Samples':>7} | {'RMSE':>8} | "
+                        f"{'Std RMSE':>9} | {'MAE':>8}"
+                    )
+                    print("      " + "-" * 55)
+                    for _, row in details_df.head(show_top_contributors).iterrows():
+                        print(
+                            f"      {row['node_id']:6.0f} | {row['n_samples']:7.0f} | "
+                            f"{row['rmse']:8.4f} | {row['std_rmse']:9.6f} | "
+                            f"{row['mae']:8.4f}"
+                        )
+
+    # ------------------------------------------------------------------ #
+    # Split by Usage
+    # ------------------------------------------------------------------ #
+    public_df = df[df["Usage"].str.strip().str.lower() == "public"]
+    private_df = df[df["Usage"].str.strip().str.lower() == "private"]
+
+    # print_detailed_breakdown(public_df, "Public")
+    # print_detailed_breakdown(private_df, "Private")
+
+    # ------------------------------------------------------------------ #
+    # Compute the 6 scores
+    # ------------------------------------------------------------------ #
+    pub_overall, pub_1d, pub_2d = compute_hierarchical_std_rmse(public_df, "Public")
+    prv_overall, prv_1d, prv_2d = compute_hierarchical_std_rmse(private_df, "Private")
+
+    results = {
+        "public_overall": pub_overall,
+        "private_overall": prv_overall,
+        "public_1d": pub_1d,
+        "public_2d": pub_2d,
+        "private_1d": prv_1d,
+        "private_2d": prv_2d,
+    }
+
+    # ------------------------------------------------------------------ #
+    # Print summary
+    # ------------------------------------------------------------------ #
+    print("\n" + "=" * 80)
+    print("FINAL 6 RMSE READINGS")
+    print("=" * 80)
+    print(f"  {'Metric':<30} {'Standardized RMSE':>20}")
+    print("  " + "-" * 52)
+    print(f"  {'Public  — Overall':<30} {pub_overall:>20.6f}")
+    print(f"  {'Public  — 1D (node_type=1)':<30} {pub_1d:>20.6f}")
+    print(f"  {'Public  — 2D (node_type=2)':<30} {pub_2d:>20.6f}")
+    print(f"  {'Private — Overall':<30} {prv_overall:>20.6f}")
+    print(f"  {'Private — 1D (node_type=1)':<30} {prv_1d:>20.6f}")
+    print(f"  {'Private — 2D (node_type=2)':<30} {prv_2d:>20.6f}")
+    print("=" * 80)
+
+    return results
     
 def plot_multi_csv_comparison(
     csv_paths,
@@ -917,6 +973,7 @@ def plot_multi_csv_comparison(
     csv_colors=None,
     csv_linestyles=None,
     csv_markers=None,
+    output_dir=None,
 ):
     """
     Compare predictions from multiple CSV files for specific nodes.
@@ -928,13 +985,14 @@ def plot_multi_csv_comparison(
         csv_colors: List of 5 colors for each CSV (default: red, green, orange, purple, brown)
         csv_linestyles: List of 5 linestyles (default: '-', '--', '-.', ':', '-')
         csv_markers: List of 5 markers (default: 'x', '^', 's', 'D', 'v')
+        output_dir: Directory to save the plots (default: same directory as first CSV)
     """
     
     # ========================
     # DEFAULT CONFIGURATION
     # ========================
-    if len(csv_paths) != 3:
-        raise ValueError(f"Expected 3 CSV paths, got {len(csv_paths)}")
+    if len(csv_paths) != 4:
+        raise ValueError(f"Expected 4 CSV paths, got {len(csv_paths)}")
     
     if csv_labels is None:
         csv_labels = [f"Result {i+1}" for i in range(5)]
@@ -961,9 +1019,13 @@ def plot_multi_csv_comparison(
     
     # Output directory (based on first CSV path)
     csv_path_obj = Path(csv_paths[0])
-    output_dir = csv_path_obj.parent / "multi_csv_comparison_test"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
+    if output_dir is None:
+        output_dir = csv_path_obj.parent / "multi_csv_comparison_test"
+        output_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        output_dir = csv_path_obj.parent / f"{output_dir}"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
     print(f"\n{'=' * 60}")
     print(f"Multi-CSV Comparison for Model {model_id}, Event {event_id}")
     print(f"{'=' * 60}")
@@ -1002,11 +1064,19 @@ def plot_multi_csv_comparison(
                 & (df["model_id"] == model_id)
                 & (df["event_id"] == event_id)
                 & (df["node_type"] == node_type)
-            ].sort_values("timestep")
+            ]
+
+            # Handle missing timestep column
+            if "timestep" in df.columns:
+                node_data = node_data.sort_values("timestep")
+                timesteps = node_data["timestep"].values
+            else:
+                # Preserve original row order and generate synthetic timesteps
+                node_data = node_data.copy()
+                node_data = node_data.reset_index(drop=True)
+                timesteps = np.arange(len(node_data))
             
             if len(node_data) > 0:
-                timesteps = node_data["timestep"].values
-                
                 # Plot ground truth only once (from first CSV)
                 if not ground_truth_plotted:
                     ax.plot(
@@ -1059,7 +1129,8 @@ def plot_multi_csv_comparison(
             fontweight="bold",
             pad=15,
         )
-        ax.set_xlabel("Timestep", fontsize=11)
+        xlabel = "Timestep" if "timestep" in dfs[0].columns else "Sequence Index"
+        ax.set_xlabel(xlabel, fontsize=11)
         ax.set_ylabel("Water Level", fontsize=11)
         
         # Legend with better positioning
@@ -1230,88 +1301,43 @@ def main():
     #     output_csv
     # )
 
-    # print("Analyzing node-level predictions...")
-    # print("\n" + "=" * 80)
-    # print("NODE STATISTICS (Aggregated vs Per-Node)")
-    # print("=" * 80)
-    # analyze_node_statistics(csv_path=output_csv)
-
-    # print("\n" + "=" * 80)
-    # print("PER-NODE METRIC DISTRIBUTIONS")
-    # print("=" * 80)
-    # plot_per_node_metric_distributions(csv_path=output_csv)
-
-    # print("\n" + "=" * 80)
-    # print("PLOTTING INDIVIDUAL NODE TIME SERIES (10 random nodes)")
-    # print("=" * 80)
-    # plot_individual_node_timeseries(csv_path=output_csv)
-
-    # print("\n" + "=" * 80)
-    # print("EXAMPLE: Plot a specific node")
-    # print("=" * 80)
-    # print("To plot a specific node, use:")
-    # print("  plot_specific_node('gru_test_predictions_test.csv', node_id=42)")
-
-    # explain_rmse_calculation(csv_path=output_csv, show_top_contributors=20)
-
-    input_csv = "kaggle_submissions/sajay_gt.csv"
-    gt_csv = "kaggle_submissions/solutions_remapped_sorted.csv"
-    output_csv = "kaggle_submissions/sajay_gt_2.csv"
-
-    concatenate_ground_truth(
-        input_csv,
-        gt_csv,
-        output_csv
-    )
-    
-    input_csv = "kaggle_submissions/dmytro_gt.csv"
-    gt_csv = "kaggle_submissions/solutions_remapped_sorted.csv"
-    output_csv = "kaggle_submissions/dmytro_gt_2.csv"
-
-    concatenate_ground_truth(
-        input_csv,
-        gt_csv,
-        output_csv
+    explain_rmse_calculation(
+        pred_csv_path="kaggle_submissions/node_only_1_new_sorted.csv",
+        gt_csv_path="kaggle_submissions/solutions_remapped_sorted.csv",
+        show_top_contributors=20,
     )
 
-    input_csv = "kaggle_submissions/mtmr_gt.csv"
-    gt_csv = "kaggle_submissions/solutions_remapped_sorted.csv"
-    output_csv = "kaggle_submissions/mtmr_gt_2.csv"
-
-    concatenate_ground_truth(
-        input_csv,
-        gt_csv,
-        output_csv
-    )
-
-    # Define your 5 CSV file paths
-    csv_paths = [
-        "kaggle_submissions/sajay_gt_2.csv",
-        "kaggle_submissions/dmytro_gt_2.csv",
-        "kaggle_submissions/mtmr_gt_2.csv",
-    ]
+    # # Define your 5 CSV file paths
+    # csv_paths = [
+    #     "kaggle_submissions/node_only_1_sorted_2.csv",
+    #     "kaggle_submissions/node_only_1_v2_sorted_2.csv",
+    #     "kaggle_submissions/node_edge_only_1_sorted_2.csv",
+    #     "kaggle_submissions/node_only_1_hgnn_sorted_2.csv",
+    # ]
     
-    # Optional: Customize labels and styles
-    csv_labels = [
-        "Top 1 Sajay - 0.02860",
-        "Top 2 Dmytro - 0.03185",
-        "Top 3 Mtmr - 0.03950",
-    ]
+    # # Optional: Customize labels and styles
+    # csv_labels = [
+    #     "Node Only - 6.2211",
+    #     "Simplified Node Only - 36.5512",
+    #     "Node Edge - 5.9299",
+    #     "HGNN Node Edge - 1.6953",
+    # ]
     
-    csv_colors = ['red', 'green', 'orange']
-    csv_linestyles = ['-', '--', '-.']
-    csv_markers = ['x', '^', 's']
+    # csv_colors = ['red', 'green', 'orange', "purple"]
+    # csv_linestyles = ['-', '--', '-.', ':']
+    # csv_markers = ['x', '^', 's', 'D']
     
-    # Run the comparison
-    plot_multi_csv_comparison(
-        csv_paths=csv_paths,
-        csv_labels=csv_labels,
-        csv_colors=csv_colors,
-        csv_linestyles=csv_linestyles,
-        csv_markers=csv_markers,
-    )
+    # # Run the comparison
+    # plot_multi_csv_comparison(
+    #     csv_paths=csv_paths,
+    #     csv_labels=csv_labels,
+    #     csv_colors=csv_colors,
+    #     csv_linestyles=csv_linestyles,
+    #     csv_markers=csv_markers,
+    #     output_dir="multi_csv_comparison_baselines"
+    # )
 
-    print("\n✓ All visualizations complete!")
+    # print("\n✓ All visualizations complete!")
 
 
 if __name__ == "__main__":

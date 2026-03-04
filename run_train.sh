@@ -9,8 +9,6 @@
 source ~/anaconda3/etc/profile.d/conda.sh
 conda activate dual_flood_gnn
 
-python train.py --config 'configs/unified_model1/config_model1_node_only_1_extrapolate.yaml' --model 'UnifiedDUALFloodGNN1D2D'
-
 # DUALFloodGNNNode1D2D
 srun python train.py --config 'configs/model1_v2/config_model1_node_only_1.yaml' --model 'DUALFloodGNNNode1D2D'
 srun python train.py --config 'configs/model2_v2/config_model1_node_only_1.yaml' --model 'DUALFloodGNNNode1D2D'

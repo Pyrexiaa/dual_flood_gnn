@@ -1,3 +1,4 @@
+from gnn_visualization import visualize_gnn_graph
 import numpy as np
 import os
 import traceback
@@ -225,6 +226,12 @@ def main():
             input_align_features, input_align_edge_features = compute_aligned_feature_sizes(
                 train_dataset, alignment=config['training_parameters']['feature_alignment']
             )
+
+        # Visualize the graph
+        visualize_gnn_graph(train_dataset[0], output_file="graph_validation.html")
+        logger.log("Graph visualization saved to graph_validation.html")
+
+        raise Warning("stopping execution after graph visualization for validation purposes. Remove this line to proceed with training.")
 
         # Model
         model_params = config['model_parameters'][args.model]

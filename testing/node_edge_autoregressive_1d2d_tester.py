@@ -8,11 +8,13 @@ from utils import physics_utils
 import pandas as pd
 
 from .base_1d2d_tester import Base1D2DTester
+from data.feature_aligner import BatchTensorAligner
 
 
 class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.feature_aligner = BatchTensorAligner(self.dataset).to(self.device)
 
     def test(self):
         for event_idx, run_id in enumerate(self.dataset.hec_ras_run_ids):
@@ -166,6 +168,17 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
                     ],
                     dim=1,
                 )
+
+                if self.feature_alignment == "inject_rainfall":
+                     # print("Selected inject_rainfall feature alignment")  # --- IGNORE ---
+                    _, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.inject_nearest_rainfall_to_1d(
+                        x, x_1d, edge_attr, edge_attr_1d
+                    )
+                elif self.feature_alignment == "common_no_rainfall_1d":
+                    # print("Selected common feature no rainfall 1d alignment")  # --- IGNORE ---
+                    x, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.align_common_features_no_rainfall_1d(
+                        x, x_1d, edge_attr, edge_attr_1d
+                    )
 
                 # Model prediction - returns both 2D and 1D node predictions
                 pred_diff, pred_diff_1d = self.model(

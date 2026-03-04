@@ -520,6 +520,73 @@ class BatchTensorAligner:
 
         return x_aligned, x_1d_aligned, edge_attr_aligned, edge_attr_1d_aligned
 
+    def align_common_features_no_rainfall_1d(
+        self,
+        x: Tensor,
+        x_1d: Tensor,
+        edge_attr: Tensor,
+        edge_attr_1d: Tensor,
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        """
+        Common static features + full dynamic features for both domains,
+        but WITHOUT injecting extrapolated features (e.g. rainfall) into 1D nodes.
+
+        Identical to align_common_features() except:
+        - 2D nodes still receive [common_static | common_dynamic | extrapolated_dynamic]
+        - 1D nodes receive only  [common_static | common_dynamic]
+            (no nearest-neighbour extrapolation appended)
+
+        Use this when:
+        - You want to ablate or isolate the effect of rainfall forcing on 1D nodes.
+        - Your 1D sub-model handles rainfall separately (e.g. via a dedicated input head).
+        - You need asymmetric feature sizes between 1D and 2D intentionally.
+
+        Edge features: strict intersection, no extrapolation (same as align_common_features).
+
+        Args:
+            x            : [N_2d, F_2d]   raw 2D node features
+            x_1d         : [N_1d, F_1d]   raw 1D node features
+            edge_attr    : [E_2d, Fe_2d]  raw 2D edge features
+            edge_attr_1d : [E_1d, Fe_1d]  raw 1D edge features
+
+        Returns:
+            x_aligned            : [N_2d, F_common_node + F_extrap]   2D nodes (with extrapolated)
+            x_1d_aligned         : [N_1d, F_common_node]              1D nodes (WITHOUT extrapolated)
+            edge_attr_aligned    : [E_2d, F_common_edge]
+            edge_attr_1d_aligned : [E_1d, F_common_edge]
+
+        Output node feature order:
+            2D: [common_static | common_dynamic | extrapolated_dynamic]
+            1D: [common_static | common_dynamic]
+        """
+        # ── Static: strict intersection ───────────────────────────────────────
+        x_static    = x[:, self._common_static_node_cols_2d]
+        x_1d_static = x_1d[:, self._common_static_node_cols_1d]
+
+        # ── Dynamic: common features from each domain's own values ────────────
+        x_dyn_common    = x[:, self._common_dynamic_node_cols_2d]
+        x_1d_dyn_common = x_1d[:, self._common_dynamic_node_cols_1d]
+
+        # ── Dynamic: extrapolated features appended to 2D only ────────────────
+        if len(self._extrap_dynamic_node_cols_2d) > 0:
+            extrap_from_2d = x[:, self._extrap_dynamic_node_cols_2d]  # [N_2d*B, F_extrap]
+            x_aligned    = torch.cat([x_static, x_dyn_common, extrap_from_2d], dim=-1)
+        else:
+            x_aligned    = torch.cat([x_static, x_dyn_common], dim=-1)
+
+        # 1D nodes: common features only — no extrapolation injected
+        x_1d_aligned = torch.cat([x_1d_static, x_1d_dyn_common], dim=-1)
+
+        # ── Edges: strict intersection ────────────────────────────────────────
+        edge_attr_aligned = self._extract(
+            edge_attr, self._common_static_edge_cols_2d, self._common_dynamic_edge_cols_2d
+        )
+        edge_attr_1d_aligned = self._extract(
+            edge_attr_1d, self._common_static_edge_cols_1d, self._common_dynamic_edge_cols_1d
+        )
+
+        return x_aligned, x_1d_aligned, edge_attr_aligned, edge_attr_1d_aligned
+
     def align_with_extrapolation(
         self,
         x: Tensor,
@@ -689,6 +756,68 @@ class BatchTensorAligner:
 
         return x_aligned, x_1d_aligned, edge_attr_aligned, edge_attr_1d_aligned
 
+    def inject_nearest_rainfall_to_1d(
+        self,
+        x: Tensor,
+        x_1d: Tensor,
+        edge_attr: Tensor,
+        edge_attr_1d: Tensor,
+    ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        """
+        Append the nearest 2D node's extrapolatable dynamic features (e.g. rainfall)
+        as extra columns to x_1d. Everything else is returned unchanged.
+
+        x and x_1d are kept in their original raw feature format — no schema
+        intersection or column reordering is applied. Only x_1d gains new columns.
+
+        Use this when:
+        - Your model already handles heterogeneous feature sizes between 1D and 2D.
+        - You simply want 1D nodes to receive rainfall (or other 2D-only dynamic
+        forcings) without projecting onto a shared schema.
+        - You want the minimal-impact augmentation: one extra feature appended,
+        nothing else changed.
+
+        Args:
+            x            : [N_2d, F_2d]   raw 2D node features (unchanged)
+            x_1d         : [N_1d, F_1d]   raw 1D node features
+            edge_attr    : [E_2d, Fe_2d]  raw 2D edge features (unchanged)
+            edge_attr_1d : [E_1d, Fe_1d]  raw 1D edge features (unchanged)
+
+        Returns:
+            x                    : [N_2d, F_2d]        unchanged
+            x_1d_augmented       : [N_1d, F_1d + F_extrap]  x_1d with rainfall appended
+            edge_attr            : [E_2d, Fe_2d]        unchanged
+            edge_attr_1d         : [E_1d, Fe_1d]        unchanged
+
+        Output x_1d column order:
+            [original_1d_features... | extrapolated_dynamic_from_2d...]
+        """
+        if (
+            self._nearest_2d_idx is None
+            or len(self._extrap_dynamic_node_cols_2d) == 0
+        ):
+            # Nothing to inject — return inputs as-is
+            return x, x_1d, edge_attr, edge_attr_1d
+
+        # Extract the extrapolatable features (e.g. rainfall) from 2D nodes
+        extrap_from_2d = x[:, self._extrap_dynamic_node_cols_2d]   # [N_2d*B, F_extrap]
+
+        # Build batch-aware nearest-neighbour index
+        batch_size    = x_1d.size(0) // self._n_1d_single
+        offsets       = torch.arange(batch_size, device=x.device) * self._n_2d_single
+        nearest_tiled = (
+            self._nearest_2d_idx.unsqueeze(0)   # [1, N_1d]
+            + offsets.unsqueeze(1)              # [B,  1  ]
+        ).reshape(-1)                           # [N_1d * B]
+
+        # Look up the nearest 2D value for each 1D node
+        extrap_for_1d = extrap_from_2d[nearest_tiled]              # [N_1d*B, F_extrap]
+
+        # Append to 1D nodes; leave everything else untouched
+        x_1d_augmented = torch.cat([x_1d, extrap_for_1d], dim=-1)
+
+        return x, x_1d_augmented, edge_attr, edge_attr_1d
+
     # ── Schema introspection ───────────────────────────────────────────────────
 
     @property
@@ -743,3 +872,14 @@ class BatchTensorAligner:
     def edge_feature_size(self) -> int:
         """Edge feature size (same for all three alignment methods)."""
         return len(self._common_edge_names)
+    
+    @property
+    def injected_feature_names(self) -> List[str]:
+        """Extra feature names appended to x_1d by inject_nearest_rainfall_to_1d()."""
+        return list(self._extrap_node_names)
+    
+    @property
+    def node_feature_size_common_no_rainfall_1d(self) -> int:
+        """Node feature size for 1D after align_common_features_no_rainfall_1d()."""
+        return (len(self._common_static_node_cols_1d) +
+                len(self._common_dynamic_node_cols_1d))

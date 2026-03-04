@@ -9,11 +9,13 @@ import pandas as pd
 
 from .base_1d2d_tester import Base1D2DTester
 from torch_geometric.data import HeteroData
+from data.feature_aligner import BatchTensorAligner
 
 
 class HeteroNodeEdgeAutoregressive1D2DTester(Base1D2DTester):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.feature_aligner = BatchTensorAligner(self.dataset).to(self.device)
 
     def test(self):
         for event_idx, run_id in enumerate(self.dataset.hec_ras_run_ids):
@@ -87,9 +89,7 @@ class HeteroNodeEdgeAutoregressive1D2DTester(Base1D2DTester):
             ],
             dim=1,
         )
-        hetero_data["2d"].x = x_2d
-        hetero_data["2d"].num_nodes = x_2d.shape[0]
-
+        
         # ===== 1D Node Features =====
         x_1d = torch.cat(
             [
@@ -99,11 +99,8 @@ class HeteroNodeEdgeAutoregressive1D2DTester(Base1D2DTester):
             ],
             dim=1,
         )
-        hetero_data["1d"].x = x_1d
-        hetero_data["1d"].num_nodes = x_1d.shape[0]
 
         # ===== 2D Edge Structure =====
-        hetero_data["2d", "connects", "2d"].edge_index = graph.edge_index
         edge_attr_2d = torch.cat(
             [
                 graph.edge_attr[:, : self.start_edge_target_idx],
@@ -112,10 +109,8 @@ class HeteroNodeEdgeAutoregressive1D2DTester(Base1D2DTester):
             ],
             dim=1,
         )
-        hetero_data["2d", "connects", "2d"].edge_attr = edge_attr_2d
 
         # ===== 1D Edge Structure =====
-        hetero_data["1d", "connects", "1d"].edge_index = graph.edge_index_1d
         edge_attr_1d = torch.cat(
             [
                 graph.edge_attr_1d[:, : self.start_1d_edge_target_idx],
@@ -124,11 +119,32 @@ class HeteroNodeEdgeAutoregressive1D2DTester(Base1D2DTester):
             ],
             dim=1,
         )
+
+        if self.feature_alignment == "inject_rainfall":
+            # print("Selected inject_rainfall feature alignment")  # --- IGNORE ---
+            x_2d, x_1d, edge_attr_2d, edge_attr_1d = self.feature_aligner.inject_nearest_rainfall_to_1d(
+                x_2d, x_1d, edge_attr_2d, edge_attr_1d
+            )
+        elif self.feature_alignment == "common_no_rainfall_1d":
+            # print("Selected common feature no rainfall 1d alignment")  # --- IGNORE ---
+            x_2d, x_1d, edge_attr_2d, edge_attr_1d = self.feature_aligner.align_common_features_no_rainfall_1d(
+                x_2d, x_1d, edge_attr_2d, edge_attr_1d
+            )
+        elif self.feature_alignment == "common":
+            # print("Selected common feature alignment")  # --- IGNORE ---
+            x_2d, x_1d, edge_attr_2d, edge_attr_1d = self.feature_aligner.align_common_features(
+                x_2d, x_1d, edge_attr_2d, edge_attr_1d
+            )
+
+        hetero_data["2d"].x = x_2d
+        hetero_data["2d"].num_nodes = x_2d.shape[0]
+        hetero_data["1d"].x = x_1d
+        hetero_data["1d"].num_nodes = x_1d.shape[0]
+        hetero_data["2d", "connects", "2d"].edge_index = graph.edge_index
+        hetero_data["2d", "connects", "2d"].edge_attr = edge_attr_2d
+        hetero_data["1d", "connects", "1d"].edge_index = graph.edge_index_1d
         hetero_data["1d", "connects", "1d"].edge_attr = edge_attr_1d
-
-        # ===== 1D-2D Coupling Edges =====
         hetero_data["1d", "couples", "2d"].edge_index = graph.edge_index_1d_2d
-
         # Not adding reverse edges because water flows from 1D to 2D
         # hetero_data['2d', 'rev_couples', '1d'].edge_index = batch.edge_index_1d_2d.flip(0)
 

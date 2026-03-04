@@ -12,7 +12,7 @@ from utils import EarlyStopping, physics_utils, train_utils
 
 from .base_autoregressive_1d2d_trainer import BaseAutoregressive1D2DTrainer
 from .physics_informed_1d2d_trainer import PhysicsInformed1D2DTrainer
-
+from data.feature_aligner import BatchTensorAligner
 
 class NodeEdgeAutoregressive1D2DTrainer(
     BaseAutoregressive1D2DTrainer, PhysicsInformed1D2DTrainer
@@ -55,6 +55,7 @@ class NodeEdgeAutoregressive1D2DTrainer(
         self.end_1d_edge_target_idx = (
             self.start_1d_edge_target_idx + sliding_window_length
         )
+        self.feature_aligner = BatchTensorAligner(ds).to(self.device)
 
     def train(self):
         """Multi-step-ahead loss with curriculum learning."""
@@ -247,6 +248,17 @@ class NodeEdgeAutoregressive1D2DTrainer(
                     dim=1,
                 )
 
+                if self.feature_alignment == "inject_rainfall":
+                     # print("Selected inject_rainfall feature alignment")  # --- IGNORE ---
+                    _, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.inject_nearest_rainfall_to_1d(
+                        x, x_1d, edge_attr, edge_attr_1d
+                    )
+                elif self.feature_alignment == "common_no_rainfall_1d":
+                    # print("Selected common feature no rainfall 1d alignment")  # --- IGNORE ---
+                    x, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.align_common_features_no_rainfall_1d(
+                        x, x_1d, edge_attr, edge_attr_1d
+                    )
+
                 pred_diff, pred_diff_1d = self.model(
                     x,
                     edge_index,
@@ -269,7 +281,7 @@ class NodeEdgeAutoregressive1D2DTrainer(
                 )  # Reuse same scaling
                 total_batch_pred_1d_loss += pred_1d_loss.item()
 
-                step_loss = pred_loss
+                step_loss = pred_loss + pred_1d_loss
 
                 previous_timesteps = self.dataloader.dataset.previous_timesteps
                 prev_node_pred = sliding_window[:, [-1]]

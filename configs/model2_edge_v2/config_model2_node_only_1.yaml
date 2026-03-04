@@ -210,7 +210,6 @@ dataset_parameters:
     195: 195
     196: 196
     197: 197
-  alignment_method: null
 
   previous_timesteps: 1                                      # Number of previous timesteps to consider for input features
   normalize: True                                            # Whether to normalize features

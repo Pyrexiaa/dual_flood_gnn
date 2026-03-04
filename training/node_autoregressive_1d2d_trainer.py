@@ -224,7 +224,7 @@ class NodeAutoregressive1D2DTrainer(
                 )  # Reuse same scaling
                 total_batch_pred_1d_loss += pred_1d_loss.item()
 
-                step_loss = pred_loss
+                step_loss = pred_loss + pred_1d_loss
 
                 previous_timesteps = self.dataloader.dataset.previous_timesteps
                 prev_node_pred = sliding_window[:, [-1]]

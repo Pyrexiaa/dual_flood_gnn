@@ -719,7 +719,7 @@ def parse_args() -> Namespace:
 
 # Example usage:
 if __name__ == "__main__":
-    args = parse_args()
+    # args = parse_args()
     # Update these paths according to your directory structure
     # test_csv_model1 = 'kaggle_submissions/model1_test.csv'
     # test_csv_model2 = 'kaggle_submissions/model2_test.csv'
@@ -727,18 +727,17 @@ if __name__ == "__main__":
     # model2_dir = 'kaggle_submissions/model2'
     # output_file = "combined_node_only_predictions"
 
-    result = check_and_concatenate_events(
-        args.model1_test_csv,
-        args.model2_test_csv,
-        args.model1_saved_event_dir,
-        args.model2_saved_event_dir,
-        args.output_file,
-        args.timestep_to_remove,
-    )
+    # result = check_and_concatenate_events(
+    #     args.model1_test_csv,
+    #     args.model2_test_csv,
+    #     args.model1_saved_event_dir,
+    #     args.model2_saved_event_dir,
+    #     args.output_file,
+    #     args.timestep_to_remove,
+    # )
 
-    # # Sample of processing the answer file to remove excessive spin up time
-    # current_df = "kaggle_submissions/hgnn_node_only_9.csv"
-    # move_row_id_to_front(current_df)
-    # diff = compare_group_row_differences(current_df, "kaggle_submissions/solutions.csv")
-    # print(diff)
-    # trim_rows_by_combination_fast(current_df, diff, f"{current_df[:-4]}_sorted.csv")
+    current_df = "kaggle_submissions/node_only_1_new.csv"
+    move_row_id_to_front(current_df)
+    diff = compare_group_row_differences(current_df, "kaggle_submissions/solutions_remapped_sorted.csv")
+    print(diff)
+    trim_rows_by_combination_fast(current_df, diff, f"{current_df[:-4]}_sorted.csv")
