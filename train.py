@@ -227,11 +227,11 @@ def main():
                 train_dataset, alignment=config['training_parameters']['feature_alignment']
             )
 
-        # Visualize the graph
-        visualize_gnn_graph(train_dataset[0], output_file="graph_validation.html")
-        logger.log("Graph visualization saved to graph_validation.html")
+        # # Visualize the graph
+        # visualize_gnn_graph(train_dataset[0], output_file="graph_validation.html")
+        # logger.log("Graph visualization saved to graph_validation.html")
 
-        raise Warning("stopping execution after graph visualization for validation purposes. Remove this line to proceed with training.")
+        # raise Warning("stopping execution after graph visualization for validation purposes. Remove this line to proceed with training.")
 
         # Model
         model_params = config['model_parameters'][args.model]
