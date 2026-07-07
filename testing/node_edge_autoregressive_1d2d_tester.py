@@ -1,8 +1,10 @@
 from pathlib import Path
+import numpy as np
 import torch
 
 from constants import TEST_LOCAL_MASS_LOSS_NODES
 from torch_geometric.loader import DataLoader
+from tqdm import tqdm
 from utils.validation_stats import ValidationStats
 from utils import physics_utils
 import pandas as pd
@@ -15,6 +17,8 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.feature_aligner = BatchTensorAligner(self.dataset).to(self.device)
+        # Non-boundary edge masks for metric computation
+        self.non_boundary_edges_mask = ~self.boundary_edges_mask
 
     def test(self):
         for event_idx, run_id in enumerate(self.dataset.hec_ras_run_ids):
@@ -43,6 +47,18 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
         )
         self.log(f"Average 1D Node MAE across events: {self.get_avg_node_1d_mae():.4e}")
         self.log(f"Average 1D Node NSE across events: {self.get_avg_node_1d_nse():.4e}")
+
+        # 2D Edge (discharge) metrics
+        self.log(f"Average 2D Edge RMSE across events: {self.get_avg_edge_rmse():.4e}")
+        self.log(f"Average 2D Edge MAE across events: {self.get_avg_edge_mae():.4e}")
+        self.log(f"Average 2D Edge NSE across events: {self.get_avg_edge_nse():.4e}")
+
+        # 1D Edge (discharge) metrics
+        self.log(
+            f"Average 1D Edge RMSE across events: {self.get_avg_edge_1d_rmse():.4e}"
+        )
+        self.log(f"Average 1D Edge MAE across events: {self.get_avg_edge_1d_mae():.4e}")
+        self.log(f"Average 1D Edge NSE across events: {self.get_avg_edge_1d_nse():.4e}")
 
         if self.include_physics_loss:
             self.log(
@@ -90,7 +106,7 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
             dataloader = DataLoader(event_dataset, batch_size=1, shuffle=False)
             actual_event_id = self.dataset.hec_ras_run_ids[event_idx]
 
-            # 2D sliding window
+            # 2D sliding windows
             sliding_window = (
                 self.dataset[event_start_idx]
                 .x[:, self.start_node_target_idx : self.end_node_target_idx]
@@ -104,7 +120,7 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
             )
             edge_sliding_window = edge_sliding_window.to(self.device)
 
-            # 1D sliding window
+            # 1D sliding windows
             sliding_window_1d = (
                 self.dataset[event_start_idx]
                 .x_1d[:, self.start_1d_node_target_idx : self.end_1d_node_target_idx]
@@ -118,8 +134,11 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
             )
             edge_sliding_window_1d = edge_sliding_window_1d.to(self.device)
 
-
-            for graph in dataloader:
+            for graph in tqdm(
+                dataloader,
+                desc=f"Rollout event {actual_event_id}",
+                leave=False,
+            ):
                 graph = graph.to(self.device)
 
                 graph.x = graph.x.float()
@@ -140,7 +159,7 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
                     ],
                     dim=1,
                 )
-                edge_index, edge_attr = graph.edge_index, graph.edge_attr
+                edge_index = graph.edge_index
                 edge_attr = torch.concat(
                     [
                         graph.edge_attr[:, : self.start_edge_target_idx],
@@ -159,7 +178,7 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
                     ],
                     dim=1,
                 )
-                edge_index_1d, edge_attr_1d = graph.edge_index_1d, graph.edge_attr_1d
+                edge_index_1d = graph.edge_index_1d
                 edge_attr_1d = torch.concat(
                     [
                         graph.edge_attr_1d[:, : self.start_1d_edge_target_idx],
@@ -169,31 +188,30 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
                     dim=1,
                 )
 
-                if self.feature_alignment == "inject_rainfall":
-                     # print("Selected inject_rainfall feature alignment")  # --- IGNORE ---
-                    _, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.inject_nearest_rainfall_to_1d(
-                        x, x_1d, edge_attr, edge_attr_1d
-                    )
-                elif self.feature_alignment == "common_no_rainfall_1d":
-                    # print("Selected common feature no rainfall 1d alignment")  # --- IGNORE ---
+                if self.feature_alignment == "common_no_rainfall_1d":
                     x, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.align_common_features_no_rainfall_1d(
                         x, x_1d, edge_attr, edge_attr_1d
                     )
                 elif self.feature_alignment == "common":
-                    # print("Selected common feature alignment")  # --- IGNORE ---
                     x, x_1d, edge_attr, edge_attr_1d = self.feature_aligner.align_common_features(
                         x, x_1d, edge_attr, edge_attr_1d
                     )
 
-                # Model prediction - returns both 2D and 1D node predictions
-                pred_diff, pred_diff_1d = self.model(
+                # Model prediction - returns 2D/1D node and edge deltas
+                pred_diff, edge_pred_diff, pred_diff_1d, edge_pred_diff_1d = self.model(
                     x, edge_index, edge_attr, x_1d, edge_index_1d, edge_attr_1d, graph.edge_index_1d_2d
                 )
 
-                # Override boundary conditions for 2D predictions
+                # Override boundary conditions for 2D node predictions
                 pred_diff[self.boundary_nodes_mask] = graph.y[self.boundary_nodes_mask]
 
-                # Override boundary conditions for 1D predictions (if applicable)
+                # Override boundary conditions for 2D edge predictions
+                if np.any(self.boundary_edges_mask):
+                    edge_pred_diff[self.boundary_edges_mask] = graph.y_edge[
+                        self.boundary_edges_mask
+                    ]
+
+                # Override boundary conditions for 1D node predictions (if applicable)
                 if (
                     hasattr(self, "boundary_nodes_1d_mask")
                     and self.boundary_nodes_1d_mask is not None
@@ -205,28 +223,38 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
                 # 2D predictions
                 prev_node_pred = sliding_window[:, [-1]]
                 pred = prev_node_pred + pred_diff
+                prev_edge_pred = edge_sliding_window[:, [-1]]
+                edge_pred = prev_edge_pred + edge_pred_diff
 
                 # 1D predictions
                 prev_node_pred_1d = sliding_window_1d[:, [-1]]
                 pred_1d = prev_node_pred_1d + pred_diff_1d
+                prev_edge_pred_1d = edge_sliding_window_1d[:, [-1]]
+                edge_pred_1d = prev_edge_pred_1d + edge_pred_diff_1d
 
                 # Physics-informed loss (for 2D - if applicable)
                 if self.include_physics_loss:
-                    prev_edge_pred = physics_utils.get_curr_flow_from_edge_features(
+                    prev_edge_flow = physics_utils.get_curr_flow_from_edge_features(
                         edge_attr, self.dataset.previous_timesteps
                     )
                     validation_stats.update_physics_informed_stats_for_timestep(
                         pred,
                         prev_node_pred,
-                        prev_edge_pred,
+                        prev_edge_flow,
                         graph,
                         TEST_LOCAL_MASS_LOSS_NODES,
                     )
 
-                # Update sliding windows
+                # Update sliding windows (nodes AND edges)
                 sliding_window = torch.concat((sliding_window[:, 1:], pred), dim=1)
                 sliding_window_1d = torch.concat(
                     (sliding_window_1d[:, 1:], pred_1d), dim=1
+                )
+                edge_sliding_window = torch.concat(
+                    (edge_sliding_window[:, 1:], edge_pred), dim=1
+                )
+                edge_sliding_window_1d = torch.concat(
+                    (edge_sliding_window_1d[:, 1:], edge_pred_1d), dim=1
                 )
 
                 # ===== 2D Node Validation =====
@@ -242,10 +270,21 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
                 pred = torch.clip(pred, min=0)
                 label = torch.clip(label, min=0)
 
-                # Save 2D predictions
+                # ===== 2D Edge (discharge) Validation =====
+                label_edge = (
+                    graph.edge_attr[:, [self.end_edge_target_idx - 1]] + graph.y_edge
+                )
+                if self.dataset.is_normalized:
+                    edge_pred = self.dataset.normalizer.denormalize(
+                        self.dataset.EDGE_TARGET_FEATURE, edge_pred
+                    )
+                    label_edge = self.dataset.normalizer.denormalize(
+                        self.dataset.EDGE_TARGET_FEATURE, label_edge
+                    )
+
+                # Save 2D predictions (water level + discharge on edges)
                 if save_predictions:
                     pred_2d_cpu = pred.cpu().numpy().flatten()
-                    # Get 1D node IDs
                     node_ids_2d = (
                         graph.node_id_2d.cpu().numpy()
                         if hasattr(graph, "node_id_2d")
@@ -285,6 +324,13 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
                     timestamp=graph.timestep if hasattr(graph, "timestep") else None,
                 )
 
+                # 2D edge metrics (exclude boundary edges)
+                edge_pred_metric = edge_pred[self.non_boundary_edges_mask]
+                label_edge_metric = label_edge[self.non_boundary_edges_mask]
+                validation_stats.update_edge_stats_for_timestep(
+                    edge_pred_metric.cpu(), label_edge_metric.cpu()
+                )
+
                 # ===== 1D Node Validation =====
                 label_1d = graph.x_1d[:, [self.end_1d_node_target_idx - 1]] + graph.y_1d
                 if self.dataset.is_normalized:
@@ -298,10 +344,22 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
                 pred_1d = torch.clip(pred_1d, min=0)
                 label_1d = torch.clip(label_1d, min=0)
 
+                # ===== 1D Edge (discharge) Validation =====
+                label_1d_edge = (
+                    graph.edge_attr_1d[:, [self.end_1d_edge_target_idx - 1]]
+                    + graph.y_1d_edge
+                )
+                if self.dataset.is_normalized:
+                    edge_pred_1d = self.dataset.normalizer.denormalize(
+                        self.dataset.EDGE_1D_TARGET_FEATURE, edge_pred_1d
+                    )
+                    label_1d_edge = self.dataset.normalizer.denormalize(
+                        self.dataset.EDGE_1D_TARGET_FEATURE, label_1d_edge
+                    )
+
                 # Save 1D predictions
                 if save_predictions:
                     pred_1d_cpu = pred_1d.cpu().numpy().flatten()
-                    # Get 1D node IDs
                     node_ids_1d = (
                         graph.node_id_1d.cpu().numpy()
                         if hasattr(graph, "node_id_1d")
@@ -332,15 +390,20 @@ class NodeEdgeAutoregressive1D2DTester(Base1D2DTester):
                     timestamp=graph.timestep if hasattr(graph, "timestep") else None,
                 )
 
+                # 1D edge metrics
+                validation_stats.update_1d_edge_stats_for_timestep(
+                    edge_pred_1d.cpu(), label_1d_edge.cpu()
+                )
+
         validation_stats.end_validate()
         # Save predictions to CSV
         if save_predictions:
             predictions_dir = Path(predictions_dir)
             predictions_dir.mkdir(exist_ok=True, parents=True)
-            
+
             df = pd.DataFrame(predictions_list)
             output_file = predictions_dir / f"predictions_event_{actual_event_id}.csv"
             df.to_csv(output_file, index=False)
             print(f"Saved predictions to {output_file}")
-            
+
             return df

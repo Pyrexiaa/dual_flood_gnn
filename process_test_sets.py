@@ -552,7 +552,7 @@ def remove_last_timesteps_from_events(
     print("=" * 80)
 
 if __name__ == "__main__":
-    model = "Model4"
+    model = "Model2"
 
     # # Inspect CSV structure first
     # print("=" * 80)
@@ -566,8 +566,8 @@ if __name__ == "__main__":
     remove_timesteps = 48 if model == "Model1" else 36
 
     remove_last_timesteps_from_events(
-        source_events=f"data/{model}/processed/features_csv/test/event_*/",
-        target_events=f"data/{model}/processed/features_csv/test_edited/event_*",
+        source_events=f"data/{model.lower()}_raw/DynamicFiles/event_*/",
+        target_events=f"data/{model.lower()}_raw/DynamicFiles_edited/event_*",
         n_timesteps_to_remove=remove_timesteps,
         csv_files=[
             '1d_nodes_dynamic_all.csv',
@@ -578,17 +578,17 @@ if __name__ == "__main__":
         ]
     )
 
-    # Basic usage - keep first 10 timesteps for each node/edge
-    copy_event_csvs_with_selective_timesteps(
-        source_events=f"data/{model}/processed/features_csv/test_edited/event_*/",
-        target_events=f"data/{model}/processed/features_csv/test_edited2/event_*",
-        column_timestep_limits={
-            "flow": 9,  # Keep timesteps 0-9 for each edge
-            "velocity": 9,
-            "water_level": 9,
-            "inlet_flow": 9,
-            "water_volume": 9,
-        },
-    )
+    # # Basic usage - keep first 10 timesteps for each node/edge
+    # copy_event_csvs_with_selective_timesteps(
+    #     source_events=f"data/{model}/processed/features_csv/test_edited/event_*/",
+    #     target_events=f"data/{model}/processed/features_csv/test_edited2/event_*",
+    #     column_timestep_limits={
+    #         "flow": 9,  # Keep timesteps 0-9 for each edge
+    #         "velocity": 9,
+    #         "water_level": 9,
+    #         "inlet_flow": 9,
+    #         "water_volume": 9,
+    #     },
+    # )
 
     

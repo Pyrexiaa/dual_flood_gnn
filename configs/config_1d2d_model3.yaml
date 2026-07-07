@@ -14,7 +14,7 @@ dataset_parameters:
   previous_timesteps: 1                                      # Number of previous timesteps to consider for input features
   normalize: False                                            # Whether to normalize features
   timestep_interval: 300                                    # Interval between timesteps in seconds
-  spin_up_time: 14400
+  spin_up_time: 0
   time_from_peak: null                                       # Time after peak flow to consider in data in seconds. Used to trim the end of the flood event. Set to null to include the entire event
   inflow_boundary_nodes: null                                # List of inflow boundary node IDs for boundary conditions
   outflow_boundary_nodes:                                    # List of outflow boundary node IDs for boundary conditions 

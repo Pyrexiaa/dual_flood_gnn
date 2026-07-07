@@ -8,7 +8,7 @@ import random
 
 from argparse import ArgumentParser, Namespace
 from datetime import datetime
-from data import dataset_factory, FloodEvent1D2DDataset, BatchTensorAligner
+from data import dataset_factory, FloodEvent1D2DDataset, BatchTensorAligner, list_event_ids
 from models import model_factory
 from test import get_test_dataset_config, run_test
 from training import trainer_factory
@@ -55,8 +55,71 @@ def parse_args() -> Namespace:
     parser.add_argument("--debug", type=bool, default=False, help='Add debug messages to output')
     return parser.parse_args()
 
+def load_csv_datasets(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEvent1D2DDataset, Optional[FloodEvent1D2DDataset]]:
+    """Load the pre-extracted CSV dataset (data already split into train/ and test/).
+
+    The training events under <root_dir>/train are further split into train/val
+    according to val_split_percent. Feature-normalization statistics are computed
+    from the training split only and saved for reuse by the val/test datasets.
+    """
+    dp = config['dataset_parameters']
+    tp = config['training_parameters']
+    lp = config['loss_func_parameters']
+    root_dir = dp['root_dir']
+    train_dir = os.path.join(root_dir, 'train')
+
+    all_ids = list_event_ids(train_dir)
+    assert len(all_ids) > 0, f'No event_* folders found in {train_dir}'
+
+    percent_validation = tp['val_split_percent']
+    autoregressive = tp['autoregressive'].get('enabled', False)
+    total_num_timesteps = tp['autoregressive']['total_num_timesteps']
+
+    # Deterministic train/val split of events
+    rng = random.Random(args.seed)
+    shuffled = list(all_ids)
+    rng.shuffle(shuffled)
+    n_val = max(1, int(len(shuffled) * percent_validation)) if percent_validation else 0
+    val_ids = shuffled[:n_val]
+    train_ids = shuffled[n_val:]
+    logger.log(f'CSV mode: {len(train_ids)} train events, {len(val_ids)} val events (from {train_dir})')
+
+    common = {
+        'root_dir': root_dir,
+        'split_dir': train_dir,
+        'previous_timesteps': dp['previous_timesteps'],
+        'normalize': dp['normalize'],
+        'timestep_interval': dp['timestep_interval'],
+        'features_stats_file': dp['features_stats_file'],
+        'model_name': dp['model_name'],
+        'with_global_mass_loss': lp['use_global_mass_loss'],
+        'with_local_mass_loss': lp['use_local_mass_loss'],
+        'logger': logger,
+    }
+
+    # Train dataset first so it computes & saves the feature stats
+    train_dataset = dataset_factory(
+        'csv', autoregressive=autoregressive, mode='train',
+        event_ids=train_ids,
+        num_label_timesteps=total_num_timesteps if autoregressive else 1,
+        **common,
+    )
+    val_dataset = None
+    if n_val > 0:
+        val_dataset = dataset_factory(
+            'csv', autoregressive=False, mode='test',
+            event_ids=val_ids, num_label_timesteps=1, **common,
+        )
+    logger.log(f'Loaded CSV train dataset with {len(train_dataset)} samples'
+               + (f' and validation dataset with {len(val_dataset)} samples' if val_dataset is not None else ''))
+    return train_dataset, val_dataset
+
+
 def load_dataset(config: Dict, args: Namespace, logger: Logger) -> Tuple[FloodEvent1D2DDataset, Optional[FloodEvent1D2DDataset]]:
     dataset_parameters = config['dataset_parameters']
+    if dataset_parameters['storage_mode'] == 'csv':
+        return load_csv_datasets(config, args, logger)
+
     root_dir = dataset_parameters['root_dir']
     train_dataset_parameters = dataset_parameters['training']
     loss_func_parameters = config['loss_func_parameters']
@@ -224,7 +287,7 @@ def main():
         train_dataset, val_dataset = load_dataset(config, args, logger)
 
         # Compute the input features
-        if config['training_parameters']['feature_alignment'] is not None and config['training_parameters']['feature_alignment'] != "inject_rainfall":
+        if config['training_parameters']['feature_alignment'] is not None:
             input_align_features, input_align_edge_features = compute_aligned_feature_sizes(
                 train_dataset, alignment=config['training_parameters']['feature_alignment']
             )
@@ -243,7 +306,7 @@ def main():
             'static_edge_features': train_dataset.num_static_edge_features,
             'dynamic_edge_features': train_dataset.num_dynamic_edge_features,
             'static_1d_node_features': train_dataset.num_static_1d_node_features,
-            'dynamic_1d_node_features': int(train_dataset.num_dynamic_1d_node_features + 1) if config['training_parameters']['feature_alignment'] == 'inject_rainfall' else train_dataset.num_dynamic_1d_node_features,
+            'dynamic_1d_node_features': train_dataset.num_dynamic_1d_node_features,
             'static_1d_edge_features': train_dataset.num_static_1d_edge_features,
             'dynamic_1d_edge_features': train_dataset.num_dynamic_1d_edge_features,
             'previous_timesteps': train_dataset.previous_timesteps,
@@ -253,8 +316,8 @@ def main():
             **model_params,
             **base_model_params,
             # Override whatever input_features model_params had with the aligned sizes
-            'input_align_features': input_align_features if config['training_parameters']['feature_alignment'] is not None and config['training_parameters']['feature_alignment'] != 'inject_rainfall' else None,
-            'input_align_edge_features': input_align_edge_features if config['training_parameters']['feature_alignment'] is not None and config['training_parameters']['feature_alignment'] != 'inject_rainfall' else None,
+            'input_align_features': input_align_features if config['training_parameters']['feature_alignment'] is not None else None,
+            'input_align_edge_features': input_align_edge_features if config['training_parameters']['feature_alignment'] is not None else None,
         }
         model = model_factory(args.model, **model_config)
         logger.log(f'Using model: {args.model}')

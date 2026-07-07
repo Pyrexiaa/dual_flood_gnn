@@ -24,7 +24,7 @@ from constants import (
     HETEROGENOUS_MODELS,
     UNIFIED_NODE_EDGE_MODELS,
 )
-from data import dataset_factory, FloodEvent1D2DDataset, BatchTensorAligner
+from data import dataset_factory, FloodEvent1D2DDataset, BatchTensorAligner, list_event_ids
 from models import model_factory
 from typing import Dict, Optional
 from utils import Logger, file_utils
@@ -176,44 +176,70 @@ def main():
 
         # Dataset
         dataset_parameters = config["dataset_parameters"]
-        base_datset_config = {
-            "root_dir": dataset_parameters["root_dir"],
-            "nodes_1d_shp_file": dataset_parameters["nodes_1d_shp_file"],
-            "edges_1d_shp_file": dataset_parameters["edges_1d_shp_file"],
-            "nodes_2d_shp_file": dataset_parameters["nodes_2d_shp_file"],
-            "edges_2d_shp_file": dataset_parameters["edges_2d_shp_file"],
-            "edges_1d2d_shp_file": dataset_parameters["edges_1d2d_shp_file"],
-            "dem_file": dataset_parameters["dem_file"],
-            "perimeter_name": dataset_parameters["perimeter_name"],
-            "network_name": dataset_parameters["network_name"],
-            "model_name": dataset_parameters["model_name"],
-            "features_stats_file": dataset_parameters["features_stats_file"],
-            "previous_timesteps": dataset_parameters["previous_timesteps"],
-            "normalize": dataset_parameters["normalize"],
-            "timestep_interval": dataset_parameters["timestep_interval"],
-            "spin_up_time": dataset_parameters["spin_up_time"],
-            "time_from_peak": dataset_parameters["time_from_peak"],
-            "inflow_boundary_nodes": dataset_parameters["inflow_boundary_nodes"],
-            "outflow_boundary_nodes": dataset_parameters["outflow_boundary_nodes"],
-            "node_1d_mapping": dataset_parameters["node_1d_mapping"],
-        }
-        base_datset_config = get_test_dataset_config(base_datset_config, config)
-        logger.log(f"Using dataset configuration: {base_datset_config}")
-        dataset_config = {
-            **base_datset_config,
-            "debug": args.debug,
-            "logger": logger,
-            "force_reload": True,
-        }
-
         storage_mode = dataset_parameters["storage_mode"]
-        dataset = dataset_factory(
-            storage_mode=storage_mode, autoregressive=False, **dataset_config
-        )
+
+        if storage_mode == "csv":
+            # Pre-extracted CSV data: test events live under <root_dir>/test
+            root_dir = dataset_parameters["root_dir"]
+            test_dir = os.path.join(root_dir, "test")
+            test_ids = list_event_ids(test_dir)
+            assert len(test_ids) > 0, f"No event_* folders found in {test_dir}"
+            dataset = dataset_factory(
+                "csv",
+                autoregressive=False,
+                mode="test",
+                root_dir=root_dir,
+                split_dir=test_dir,
+                event_ids=test_ids,
+                num_label_timesteps=1,
+                previous_timesteps=dataset_parameters["previous_timesteps"],
+                normalize=dataset_parameters["normalize"],
+                timestep_interval=dataset_parameters["timestep_interval"],
+                features_stats_file=dataset_parameters["features_stats_file"],
+                model_name=dataset_parameters["model_name"],
+                with_global_mass_loss=False,
+                with_local_mass_loss=False,
+                logger=logger,
+            )
+            logger.log(f"Loaded CSV test dataset with {len(dataset)} samples")
+        else:
+            base_datset_config = {
+                "root_dir": dataset_parameters["root_dir"],
+                "nodes_1d_shp_file": dataset_parameters["nodes_1d_shp_file"],
+                "edges_1d_shp_file": dataset_parameters["edges_1d_shp_file"],
+                "nodes_2d_shp_file": dataset_parameters["nodes_2d_shp_file"],
+                "edges_2d_shp_file": dataset_parameters["edges_2d_shp_file"],
+                "edges_1d2d_shp_file": dataset_parameters["edges_1d2d_shp_file"],
+                "dem_file": dataset_parameters["dem_file"],
+                "perimeter_name": dataset_parameters["perimeter_name"],
+                "network_name": dataset_parameters["network_name"],
+                "model_name": dataset_parameters["model_name"],
+                "features_stats_file": dataset_parameters["features_stats_file"],
+                "previous_timesteps": dataset_parameters["previous_timesteps"],
+                "normalize": dataset_parameters["normalize"],
+                "timestep_interval": dataset_parameters["timestep_interval"],
+                "spin_up_time": dataset_parameters["spin_up_time"],
+                "time_from_peak": dataset_parameters["time_from_peak"],
+                "inflow_boundary_nodes": dataset_parameters["inflow_boundary_nodes"],
+                "outflow_boundary_nodes": dataset_parameters["outflow_boundary_nodes"],
+                "node_1d_mapping": dataset_parameters["node_1d_mapping"],
+            }
+            base_datset_config = get_test_dataset_config(base_datset_config, config)
+            logger.log(f"Using dataset configuration: {base_datset_config}")
+            dataset_config = {
+                **base_datset_config,
+                "debug": args.debug,
+                "logger": logger,
+                "force_reload": True,
+            }
+
+            dataset = dataset_factory(
+                storage_mode=storage_mode, autoregressive=False, **dataset_config
+            )
         logger.log(f"Loaded dataset with {len(dataset)} samples")
 
         # Compute the input features
-        if config['training_parameters']['feature_alignment'] is not None and config['training_parameters']['feature_alignment'] != "inject_rainfall":
+        if config['training_parameters']['feature_alignment'] is not None:
             input_align_features, input_align_edge_features = compute_aligned_feature_sizes(
                 dataset, alignment=config['training_parameters']['feature_alignment']
             )
@@ -227,7 +253,7 @@ def main():
             "static_edge_features": dataset.num_static_edge_features,
             "dynamic_edge_features": dataset.num_dynamic_edge_features,
             "static_1d_node_features": dataset.num_static_1d_node_features,
-            "dynamic_1d_node_features": int(dataset.num_dynamic_1d_node_features + 1) if config['training_parameters']['feature_alignment'] == 'inject_rainfall' else dataset.num_dynamic_1d_node_features,
+            "dynamic_1d_node_features": dataset.num_dynamic_1d_node_features,
             "static_1d_edge_features": dataset.num_static_1d_edge_features,
             "dynamic_1d_edge_features": dataset.num_dynamic_1d_edge_features,
             "previous_timesteps": previous_timesteps,
@@ -237,8 +263,8 @@ def main():
             **model_params,
             **base_model_params,
             # Override whatever input_features model_params had with the aligned sizes
-            'input_align_features': input_align_features if config['training_parameters']['feature_alignment'] is not None and config['training_parameters']['feature_alignment'] != 'inject_rainfall' else None,
-            'input_align_edge_features': input_align_edge_features if config['training_parameters']['feature_alignment'] is not None and config['training_parameters']['feature_alignment'] != 'inject_rainfall' else None,
+            'input_align_features': input_align_features if config['training_parameters']['feature_alignment'] is not None else None,
+            'input_align_edge_features': input_align_edge_features if config['training_parameters']['feature_alignment'] is not None else None,
         }
         model = model_factory(args.model, **model_config)
         model.load_state_dict(torch.load(args.model_path, weights_only=True))

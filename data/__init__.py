@@ -10,9 +10,20 @@ from .flood_event_1d2d_dataset import FloodEvent1D2DDataset
 from .in_memory_autoregressive_flood_dataset import InMemoryAutoregressiveFloodDataset
 from .in_memory_flood_dataset import InMemoryFloodDataset
 from .in_memory_flood_1d2d_dataset import InMemoryFlood1D2DDataset
+from .csv_flood_1d2d_dataset import (
+    CsvInMemoryFlood1D2DDataset,
+    CsvInMemoryAutoregressiveFlood1D2DDataset,
+    list_event_ids,
+)
 from .feature_aligner import BatchTensorAligner
 
-def dataset_factory(storage_mode: Literal['memory', 'disk'], autoregressive: bool, *args, **kwargs) -> FloodEvent1D2DDataset:
+def dataset_factory(storage_mode: Literal['memory', 'disk', 'csv'], autoregressive: bool, *args, **kwargs) -> FloodEvent1D2DDataset:
+    if storage_mode == 'csv':
+        # Pre-extracted CSV folders (data already split into train/ and test/)
+        if autoregressive:
+            return CsvInMemoryAutoregressiveFlood1D2DDataset(*args, **kwargs)
+        return CsvInMemoryFlood1D2DDataset(*args, **kwargs)
+
     if autoregressive:
         if storage_mode == 'memory':
             return InMemoryAutoregressiveFlood1D2DDataset(*args, **kwargs)
@@ -31,6 +42,9 @@ __all__ = [
     'FloodEvent1D2DDataset',
     'InMemoryAutoregressiveFlood1D2DDataset',
     'InMemoryFlood1D2DDataset',
+    'CsvInMemoryFlood1D2DDataset',
+    'CsvInMemoryAutoregressiveFlood1D2DDataset',
+    'list_event_ids',
     'dataset_factory',
     'BatchTensorAligner'
 ]

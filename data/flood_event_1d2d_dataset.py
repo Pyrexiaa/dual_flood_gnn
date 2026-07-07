@@ -92,7 +92,7 @@ class FloodEvent1D2DDataset(Dataset):
         "surface_elevation",
         "base_area",
     ]
-    DYNAMIC_1D_NODE_FEATURES = ["water_level"]  # Not included inlet flow
+    DYNAMIC_1D_NODE_FEATURES = ["rainfall", "water_level"]  # rainfall = spatially-uniform forcing; not included inlet flow
     STATIC_1D_EDGE_FEATURES = [
         "relative_position_x",
         "relative_position_y",
@@ -741,7 +741,29 @@ class FloodEvent1D2DDataset(Dataset):
 
             return wrapper
 
+        def get_uniform_interval_rainfall_1d(hec_ras_path, network_name=None):
+            """Assign the spatially-uniform (basin) interval rainfall depth to every 1D node.
+
+            Rainfall is uniform across the domain, so we take the 2D interval rainfall
+            (cumulative -> per-step depth) and broadcast the per-timestep value to all
+            1D nodes. Returns shape (timesteps, num_1d_nodes).
+            """
+            cumulative_rainfall = get_rainfall(
+                hec_ras_path, perimeter_name=self.perimeter_name
+            ).astype(np.float64)
+            interval_rainfall = np.empty_like(cumulative_rainfall)
+            interval_rainfall[:] = np.nan
+            interval_rainfall[1:] = cumulative_rainfall[1:] - cumulative_rainfall[:-1]
+            interval_rainfall[0] = cumulative_rainfall[0]
+            # Reduce spatial axis to a single uniform value per timestep, then broadcast to 1D nodes
+            uniform_per_ts = np.nanmean(interval_rainfall, axis=1, keepdims=True)
+            num_1d_nodes = len(self.node_1d_mapping)
+            return np.repeat(uniform_per_ts, num_1d_nodes, axis=1)
+
         DYNAMIC_1D_NODE_RETRIEVAL_MAP = {
+            "rainfall": lambda: self._get_dynamic_from_all_unique_1d_events(
+                get_uniform_interval_rainfall_1d, aggr="sum"
+            ),
             "water_level": lambda: self._get_dynamic_from_all_unique_1d_events(
                 remap_1d_nodes(get_1d_water_level), aggr="mean"
             ),

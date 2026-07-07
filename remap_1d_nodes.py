@@ -1,10 +1,7 @@
 import pandas as pd
 from pathlib import Path
 import matplotlib.pyplot as plt
-import numpy as np
 
-
-# Define the mapping
 model1_1d_mapping = {
     0: 0,
     1: 12,
@@ -22,7 +19,7 @@ model1_1d_mapping = {
     13: 2,
     14: 6,
     15: 8,
-    16: 1
+    16: 1,
 }
 
 model2_1d_mapping = {
@@ -223,13 +220,378 @@ model2_1d_mapping = {
     194: 194,
     195: 195,
     196: 196,
-    197: 197
+    197: 197,
 }
+
+model3_1d_mapping = {
+    0: 16,
+    1: 7,
+    2: 6,
+    3: 2,
+    4: 8,
+    5: 4,
+    6: 0,
+    7: 15,
+    8: 10,
+    9: 12,
+    10: 11,
+    11: 9,
+    12: 5,
+    13: 3,
+    14: 13,
+    15: 1,
+    16: 14,
+    17: 17,
+    18: 18,
+    19: 20,
+    20: 22,
+    21: 19,
+    22: 21,
+    23: 23,
+    24: 24,
+    25: 25,
+    26: 26,
+    27: 27,
+    28: 28,
+    29: 36,
+    30: 35,
+    31: 34,
+    32: 33,
+    33: 32,
+    34: 31,
+    35: 30,
+    36: 29,
+    37: 37,
+    38: 44,
+    39: 43,
+    40: 42,
+    41: 41,
+    42: 40,
+    43: 39,
+    44: 38,
+    45: 45,
+    46: 46,
+    47: 47,
+    48: 48,
+    49: 49,
+    50: 50,
+    51: 51,
+    52: 52,
+    53: 53,
+    54: 54,
+    55: 55,
+    56: 56,
+    57: 57,
+    58: 58,
+    59: 59,
+    60: 63,
+    61: 62,
+    62: 61,
+    63: 60,
+    64: 64,
+}
+
+model4_1d_mapping = {
+    0: 9,
+    1: 14,
+    2: 13,
+    3: 5,
+    4: 4,
+    5: 1,
+    6: 11,
+    7: 12,
+    8: 15,
+    9: 6,
+    10: 7,
+    11: 19,
+    12: 18,
+    13: 17,
+    14: 2,
+    15: 3,
+    16: 16,
+    17: 10,
+    18: 0,
+    19: 20,
+    20: 8,
+    21: 24,
+    22: 25,
+    23: 27,
+    24: 21,
+    25: 22,
+    26: 23,
+    27: 26,
+    28: 33,
+    29: 31,
+    30: 32,
+    31: 28,
+    32: 29,
+    33: 30,
+    34: 42,
+    35: 34,
+    36: 41,
+    37: 47,
+    38: 36,
+    39: 37,
+    40: 38,
+    41: 40,
+    42: 46,
+    43: 35,
+    44: 39,
+    45: 43,
+    46: 45,
+    47: 44,
+    48: 51,
+    49: 52,
+    50: 55,
+    51: 56,
+    52: 48,
+    53: 49,
+    54: 59,
+    55: 50,
+    56: 53,
+    57: 54,
+    58: 62,
+    59: 61,
+    60: 60,
+    61: 57,
+    62: 58,
+    63: 64,
+    64: 65,
+    65: 63,
+    66: 66,
+    67: 69,
+    68: 77,
+    69: 74,
+    70: 80,
+    71: 78,
+    72: 79,
+    73: 81,
+    74: 70,
+    75: 82,
+    76: 67,
+    77: 83,
+    78: 71,
+    79: 72,
+    80: 73,
+    81: 76,
+    82: 68,
+    83: 75,
+    84: 100,
+    85: 99,
+    86: 91,
+    87: 84,
+    88: 85,
+    89: 107,
+    90: 95,
+    91: 94,
+    92: 86,
+    93: 87,
+    94: 110,
+    95: 103,
+    96: 104,
+    97: 89,
+    98: 106,
+    99: 90,
+    100: 105,
+    101: 109,
+    102: 108,
+    103: 101,
+    104: 102,
+    105: 88,
+    106: 98,
+    107: 97,
+    108: 92,
+    109: 93,
+    110: 96,
+    111: 114,
+    112: 113,
+    113: 111,
+    114: 115,
+    115: 116,
+    116: 120,
+    117: 119,
+    118: 117,
+    119: 118,
+    120: 112,
+    121: 126,
+    122: 125,
+    123: 124,
+    124: 123,
+    125: 121,
+    126: 122,
+    127: 130,
+    128: 129,
+    129: 128,
+    130: 127,
+    131: 150,
+    132: 149,
+    133: 146,
+    134: 145,
+    135: 132,
+    136: 133,
+    137: 142,
+    138: 131,
+    139: 134,
+    140: 137,
+    141: 135,
+    142: 136,
+    143: 141,
+    144: 138,
+    145: 140,
+    146: 139,
+    147: 147,
+    148: 143,
+    149: 144,
+    150: 148,
+    151: 155,
+    152: 151,
+    153: 163,
+    154: 162,
+    155: 152,
+    156: 153,
+    157: 170,
+    158: 165,
+    159: 159,
+    160: 166,
+    161: 167,
+    162: 161,
+    163: 169,
+    164: 158,
+    165: 156,
+    166: 157,
+    167: 172,
+    168: 171,
+    169: 160,
+    170: 164,
+    171: 168,
+    172: 154,
+    173: 173,
+    174: 186,
+    175: 185,
+    176: 182,
+    177: 184,
+    178: 183,
+    179: 187,
+    180: 178,
+    181: 180,
+    182: 181,
+    183: 201,
+    184: 198,
+    185: 199,
+    186: 177,
+    187: 175,
+    188: 196,
+    189: 195,
+    190: 194,
+    191: 200,
+    192: 176,
+    193: 197,
+    194: 174,
+    195: 179,
+    196: 202,
+    197: 190,
+    198: 189,
+    199: 188,
+    200: 191,
+    201: 192,
+    202: 193,
+    203: 222,
+    204: 218,
+    205: 215,
+    206: 213,
+    207: 207,
+    208: 208,
+    209: 209,
+    210: 203,
+    211: 205,
+    212: 206,
+    213: 204,
+    214: 212,
+    215: 220,
+    216: 214,
+    217: 210,
+    218: 211,
+    219: 219,
+    220: 216,
+    221: 217,
+    222: 224,
+    223: 223,
+    224: 221,
+    225: 226,
+    226: 237,
+    227: 243,
+    228: 234,
+    229: 235,
+    230: 231,
+    231: 232,
+    232: 233,
+    233: 240,
+    234: 241,
+    235: 229,
+    236: 230,
+    237: 239,
+    238: 238,
+    239: 228,
+    240: 227,
+    241: 225,
+    242: 242,
+    243: 236,
+    244: 256,
+    245: 252,
+    246: 254,
+    247: 250,
+    248: 247,
+    249: 248,
+    250: 253,
+    251: 255,
+    252: 251,
+    253: 257,
+    254: 246,
+    255: 244,
+    256: 245,
+    257: 249,
+    258: 258,
+    259: 259,
+    260: 274,
+    261: 275,
+    262: 280,
+    263: 278,
+    264: 279,
+    265: 265,
+    266: 266,
+    267: 262,
+    268: 267,
+    269: 268,
+    270: 277,
+    271: 263,
+    272: 270,
+    273: 264,
+    274: 260,
+    275: 273,
+    276: 271,
+    277: 272,
+    278: 261,
+    279: 276,
+    280: 282,
+    281: 281,
+    282: 269,
+    283: 288,
+    284: 285,
+    285: 284,
+    286: 289,
+    287: 283,
+    288: 286,
+    289: 291,
+    290: 290,
+    291: 292,
+    292: 287,
+}
+
 
 def remap_node_indices(train_dir, mapping=None):
     """
     Remap node indices in 1d_nodes_dynamic_all.csv files based on the provided mapping.
-    
+
     Parameters:
     -----------
     train_dir : str or Path
@@ -239,98 +601,103 @@ def remap_node_indices(train_dir, mapping=None):
         If None, uses model1_1d_mapping by default.
     """
     if mapping is None:
-        mapping = model1_1d_mapping
-    
+        mapping = model4_1d_mapping
+
     train_path = Path(train_dir)
-    
+
     if not train_path.exists():
         print(f"Error: Directory {train_path} does not exist")
         return
-    
+
     # Find all event_* folders
-    event_folders = sorted([f for f in train_path.iterdir() if f.is_dir() and f.name.startswith('event_')])
-    
+    event_folders = sorted(
+        [f for f in train_path.iterdir() if f.is_dir() and f.name.startswith("event_")]
+    )
+
     if not event_folders:
         print(f"No event_* folders found in {train_path}")
         return
-    
+
     print(f"Found {len(event_folders)} event folders")
-    
+
     for event_folder in event_folders:
         csv_file = event_folder / "1d_nodes_dynamic_all.csv"
-        
+
         if not csv_file.exists():
             print(f"Warning: {csv_file} not found, skipping...")
             continue
-        
+
         print(f"Processing {csv_file}...")
-        
+
         try:
             # Read the CSV file
             df = pd.read_csv(csv_file)
-            
+
             # Verify required columns exist
-            required_cols = ['timestep', 'node_idx', 'water_level', 'inlet_flow']
+            required_cols = ["timestep", "node_idx", "water_level", "inlet_flow"]
             if not all(col in df.columns for col in required_cols):
                 print(f"Error: Missing required columns in {csv_file}")
                 continue
-            
+
             # For each timestep, rearrange rows according to the mapping
             # mapping[FID] = HEC-RAS_column means: output position FID gets data from input position HEC-RAS_column
-            
+
             result_dfs = []
-            for timestep in df['timestep'].unique():
-                timestep_df = df[df['timestep'] == timestep].copy()
-                
+            for timestep in df["timestep"].unique():
+                timestep_df = df[df["timestep"] == timestep].copy()
+
                 # Create new rows in the correct order
                 new_rows = []
                 for new_fid in sorted(mapping.keys()):
                     # Get which old position should go to this new FID position
                     old_position = mapping[new_fid]
-                    
+
                     # Find the row with that original node_idx
-                    matching_row = timestep_df[timestep_df['node_idx'] == old_position]
-                    
+                    matching_row = timestep_df[timestep_df["node_idx"] == old_position]
+
                     if not matching_row.empty:
                         row = matching_row.iloc[0].copy()
-                        row['node_idx'] = new_fid  # Set to the new FID position
+                        row["node_idx"] = new_fid  # Set to the new FID position
                         new_rows.append(row)
                     else:
-                        print(f"  Warning: No data found for old node_idx={old_position} at timestep={timestep}")
-                
+                        print(
+                            f"  Warning: No data found for old node_idx={old_position} at timestep={timestep}"
+                        )
+
                 if new_rows:
                     new_timestep_df = pd.DataFrame(new_rows)
                     result_dfs.append(new_timestep_df)
-            
+
             # Combine all timesteps
             if result_dfs:
                 df = pd.concat(result_dfs, ignore_index=True)
             else:
                 print(f"Warning: No data could be remapped for {csv_file}")
                 continue
-            
+
             # Convert node_idx to integer
-            df['node_idx'] = df['node_idx'].astype(int)
-            
+            df["node_idx"] = df["node_idx"].astype(int)
+
             # Already sorted by construction, but ensure it
-            df = df.sort_values(['timestep', 'node_idx']).reset_index(drop=True)
-            
+            df = df.sort_values(["timestep", "node_idx"]).reset_index(drop=True)
+
             # Save the remapped CSV
             output_file = event_folder / "1d_nodes_dynamic_all_remapped.csv"
             df.to_csv(output_file, index=False)
-            
+
             print(f"  ✓ Saved remapped file to {output_file}")
-            
+
         except Exception as e:
             print(f"Error processing {csv_file}: {str(e)}")
             continue
-    
+
     print("\nProcessing complete!")
+
 
 def plot_water_levels(train_dir, static_csv_path, hecras_csv_path, event_names=None):
     """
     Plot water level across timesteps for each node, comparing with invert elevation and HEC-RAS results.
-    
+
     Parameters:
     -----------
     train_dir : str or Path
@@ -340,24 +707,26 @@ def plot_water_levels(train_dir, static_csv_path, hecras_csv_path, event_names=N
     hecras_csv_path : str or Path
         Path to the HEC-RAS results CSV file with ground truth data
     event_names : list of str, optional
-        List of event folder names to plot (e.g., ['event_1', 'event_5']). 
+        List of event folder names to plot (e.g., ['event_1', 'event_5']).
         If None, plots first 2 events.
     """
     train_path = Path(train_dir)
     static_path = Path(static_csv_path)
     hecras_path = Path(hecras_csv_path)
-    
+
     # Read static node data
     print(f"Reading static node data from {static_path}...")
     static_df = pd.read_csv(static_path)
-    
+
     # Read HEC-RAS ground truth data
     print(f"Reading HEC-RAS ground truth data from {hecras_path}...")
     hecras_df = pd.read_csv(hecras_path)
-    
+
     # Create a dictionary mapping node_idx to invert_elevation
-    node_invert_elevation = dict(zip(static_df['node_idx'], static_df['invert_elevation']))
-    
+    node_invert_elevation = dict(
+        zip(static_df["node_idx"], static_df["invert_elevation"])
+    )
+
     # Find event folders
     if event_names is not None:
         # Use specified event names
@@ -370,55 +739,70 @@ def plot_water_levels(train_dir, static_csv_path, hecras_csv_path, event_names=N
                 print(f"Warning: Event folder '{event_name}' not found, skipping...")
     else:
         # Default to first 2 events
-        event_folders = sorted([f for f in train_path.iterdir() 
-                               if f.is_dir() and f.name.startswith('event_')])[:2]
-    
+        event_folders = sorted(
+            [
+                f
+                for f in train_path.iterdir()
+                if f.is_dir() and f.name.startswith("event_")
+            ]
+        )[:2]
+
     if not event_folders:
         print(f"No event folders found in {train_path}")
         return
-    
+
     print(f"Found {len(event_folders)} event folders to plot")
-    
+
     # Get unique nodes from static data
-    unique_nodes = sorted(static_df['node_idx'].unique())
+    unique_nodes = sorted(static_df["node_idx"].unique())
     num_nodes = len(unique_nodes)
-    
+
     print(f"Number of nodes to plot: {num_nodes}")
-    
+
     # Process HEC-RAS data
-    # Remove 'No' and 'Date' columns to get only node data
-    hecras_node_cols = [col for col in hecras_df.columns if col not in ['No', 'Date']]
-    hecras_data_only = hecras_df[hecras_node_cols].copy()
-    
-    # Convert column names to integers (they represent node indices)
+    hecras_data_only = hecras_df.drop(columns=["Time"]).copy()
+    # hecras_data_only = hecras_df.drop(columns=["Date"]).copy()
+    # hecras_data_only = hecras_data_only.drop(columns=["No"]).copy()
     hecras_data_only.columns = [int(col) for col in hecras_data_only.columns]
-    
+
     print(f"\nHEC-RAS data shape: {hecras_data_only.shape}")
     print(f"HEC-RAS nodes: {sorted(hecras_data_only.columns.tolist())}")
-    
+
     # Validate and trim HEC-RAS data if needed
     num_timesteps = None
     for event_folder in event_folders:
         csv_file = event_folder / "1d_nodes_dynamic_all.csv"
         if csv_file.exists():
             temp_df = pd.read_csv(csv_file)
-            num_timesteps = len(temp_df['timestep'].unique())
+            num_timesteps = len(temp_df["timestep"].unique())
             break
-    
+
     if num_timesteps is not None:
         expected_rows = num_timesteps
         actual_rows = len(hecras_data_only)
-        
-        print(f"Expected HEC-RAS rows: {expected_rows} ({num_nodes} nodes × {num_timesteps} timesteps)")
+        if actual_rows > num_timesteps:
+            rows_to_remove = actual_rows - num_timesteps
+            print(f"Trimming first {rows_to_remove} rows from HEC-RAS data")
+            hecras_data_only = hecras_data_only.iloc[rows_to_remove:].reset_index(
+                drop=True
+            )
+
+        print(
+            f"Expected HEC-RAS rows: {expected_rows} ({num_nodes} nodes × {num_timesteps} timesteps)"
+        )
         print(f"Actual HEC-RAS rows: {actual_rows}")
-        
+
         if actual_rows > expected_rows:
             rows_to_remove = actual_rows - expected_rows
             print(f"Trimming first {rows_to_remove} rows from HEC-RAS data")
-            hecras_data_only = hecras_data_only.iloc[rows_to_remove:].reset_index(drop=True)
+            hecras_data_only = hecras_data_only.iloc[rows_to_remove:].reset_index(
+                drop=True
+            )
         elif actual_rows < expected_rows:
-            print(f"Warning: HEC-RAS data has fewer rows than expected. Some timesteps may be missing.")
-    
+            print(
+                "Warning: HEC-RAS data has fewer rows than expected. Some timesteps may be missing."
+            )
+
     # Reshape HEC-RAS data into long format for easier plotting
     # Create a dataframe with timestep, node_idx, water_level
     hecras_long = []
@@ -428,155 +812,230 @@ def plot_water_levels(train_dir, static_csv_path, hecras_csv_path, event_names=N
                 row_idx = timestep
                 if row_idx < len(hecras_data_only):
                     water_level = hecras_data_only.iloc[row_idx][node_idx]
-                    hecras_long.append({
-                        'timestep': timestep,
-                        'node_idx': node_idx,
-                        'water_level': water_level
-                    })
+                    hecras_long.append(
+                        {
+                            "timestep": timestep,
+                            "node_idx": node_idx,
+                            "water_level": water_level,
+                        }
+                    )
         hecras_df_long = pd.DataFrame(hecras_long)
         print(f"Processed HEC-RAS data into long format: {len(hecras_df_long)} rows")
     else:
-        hecras_df_long = pd.DataFrame(columns=['timestep', 'node_idx', 'water_level'])
+        hecras_df_long = pd.DataFrame(columns=["timestep", "node_idx", "water_level"])
         print("Warning: Could not process HEC-RAS data into long format")
-    
+
     # Process each event
     for event_idx, event_folder in enumerate(event_folders):
         csv_file_original = event_folder / "1d_nodes_dynamic_all.csv"
-        csv_file_remapped = event_folder / "1d_nodes_dynamic_all.csv"
-        
+        csv_file_remapped = event_folder / "1d_nodes_dynamic_all_remapped.csv"
+
         if not csv_file_original.exists():
             print(f"Warning: {csv_file_original} not found, skipping...")
             continue
-        
+
         if not csv_file_remapped.exists():
             print(f"Warning: {csv_file_remapped} not found, skipping...")
             continue
-        
+
         print(f"\nProcessing {event_folder.name}...")
-        
+
         # Read both CSVs
         df_original = pd.read_csv(csv_file_original)
         df_remapped = pd.read_csv(csv_file_remapped)
-        
+
         # Create output directory for plots
         output_dir = event_folder / "plots"
         output_dir.mkdir(exist_ok=True)
-        
+
         # Plot for each node
         for node_idx in unique_nodes:
             # Filter data for this node from both datasets
-            node_data_original = df_original[df_original['node_idx'] == node_idx].copy()
-            node_data_remapped = df_remapped[df_remapped['node_idx'] == node_idx].copy()
-            node_data_hecras = hecras_df_long[hecras_df_long['node_idx'] == node_idx].copy()
-            
+            node_data_original = df_original[df_original["node_idx"] == node_idx].copy()
+            node_data_remapped = df_remapped[df_remapped["node_idx"] == node_idx].copy()
+            node_data_hecras = hecras_df_long[
+                hecras_df_long["node_idx"] == node_idx
+            ].copy()
+
             if node_data_original.empty and node_data_remapped.empty:
                 print(f"  Warning: No data for node {node_idx}, skipping...")
                 continue
-            
+
             # Sort by timestep
-            node_data_original = node_data_original.sort_values('timestep')
-            node_data_remapped = node_data_remapped.sort_values('timestep')
+            node_data_original = node_data_original.sort_values("timestep")
+            node_data_remapped = node_data_remapped.sort_values("timestep")
             if not node_data_hecras.empty:
-                node_data_hecras = node_data_hecras.sort_values('timestep')
-            
+                node_data_hecras = node_data_hecras.sort_values("timestep")
+
             # Get invert elevation for this node
             invert_elev = node_invert_elevation.get(node_idx, None)
-            
+
             if invert_elev is None:
-                print(f"  Warning: No invert elevation for node {node_idx}, skipping...")
+                print(
+                    f"  Warning: No invert elevation for node {node_idx}, skipping..."
+                )
                 continue
-            
+
             # Create side-by-side plot
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 6))
-            
+
             # Calculate common y-axis limits
             y_min_list = [invert_elev]
             y_max_list = [invert_elev]
-            
+
             if not node_data_original.empty:
-                y_min_list.append(node_data_original['water_level'].min())
-                y_max_list.append(node_data_original['water_level'].max())
-            
+                y_min_list.append(node_data_original["water_level"].min())
+                y_max_list.append(node_data_original["water_level"].max())
+
             if not node_data_remapped.empty:
-                y_min_list.append(node_data_remapped['water_level'].min())
-                y_max_list.append(node_data_remapped['water_level'].max())
-            
+                y_min_list.append(node_data_remapped["water_level"].min())
+                y_max_list.append(node_data_remapped["water_level"].max())
+
             if not node_data_hecras.empty:
-                y_min_list.append(node_data_hecras['water_level'].min())
-                y_max_list.append(node_data_hecras['water_level'].max())
-            
+                y_min_list.append(node_data_hecras["water_level"].min())
+                y_max_list.append(node_data_hecras["water_level"].max())
+
             y_min_common = min(y_min_list) - 1
             y_max_common = max(y_max_list) + 1
-            
+
             # LEFT PLOT: Original data
             if not node_data_original.empty:
-                ax1.plot(node_data_original['timestep'], node_data_original['water_level'], 
-                        label='Water Level', color='steelblue', linewidth=2, marker='o', markersize=3)
-                ax1.axhline(y=invert_elev, color='red', linestyle='--', 
-                           linewidth=2, label=f'Invert Elevation ({invert_elev:.2f})')
-                
+                ax1.plot(
+                    node_data_original["timestep"],
+                    node_data_original["water_level"],
+                    label="Water Level",
+                    color="steelblue",
+                    linewidth=2,
+                    marker="o",
+                    markersize=3,
+                )
+                ax1.axhline(
+                    y=invert_elev,
+                    color="red",
+                    linestyle="--",
+                    linewidth=2,
+                    label=f"Invert Elevation ({invert_elev:.2f})",
+                )
+
                 # Add HEC-RAS ground truth line
                 if not node_data_hecras.empty:
-                    ax1.plot(node_data_hecras['timestep'], node_data_hecras['water_level'], 
-                            label='HEC-RAS', color='orange', linewidth=2, linestyle='-.', marker='s', markersize=2, alpha=0.7)
-                
-                ax1.set_xlabel('Timestep', fontsize=12)
-                ax1.set_ylabel('Elevation (m)', fontsize=12)
-                ax1.set_title(f'Original - Node {node_idx}', fontsize=14, fontweight='bold')
-                ax1.legend(loc='best', fontsize=10)
+                    ax1.plot(
+                        node_data_hecras["timestep"],
+                        node_data_hecras["water_level"],
+                        label="HEC-RAS",
+                        color="orange",
+                        linewidth=2,
+                        linestyle="-.",
+                        marker="s",
+                        markersize=2,
+                        alpha=0.7,
+                    )
+
+                ax1.set_xlabel("Timestep", fontsize=12)
+                ax1.set_ylabel("Elevation (m)", fontsize=12)
+                ax1.set_title(
+                    f"Original - Node {node_idx}", fontsize=14, fontweight="bold"
+                )
+                ax1.legend(loc="best", fontsize=10)
                 ax1.grid(True, alpha=0.3)
                 ax1.set_ylim([y_min_common, y_max_common])
             else:
-                ax1.text(0.5, 0.5, 'No Original Data', ha='center', va='center', 
-                        transform=ax1.transAxes, fontsize=14)
-                ax1.set_title(f'Original - Node {node_idx}', fontsize=14, fontweight='bold')
+                ax1.text(
+                    0.5,
+                    0.5,
+                    "No Original Data",
+                    ha="center",
+                    va="center",
+                    transform=ax1.transAxes,
+                    fontsize=14,
+                )
+                ax1.set_title(
+                    f"Original - Node {node_idx}", fontsize=14, fontweight="bold"
+                )
                 ax1.set_ylim([y_min_common, y_max_common])
-            
+
             # RIGHT PLOT: Remapped data
             if not node_data_remapped.empty:
-                ax2.plot(node_data_remapped['timestep'], node_data_remapped['water_level'], 
-                        label='Water Level', color='darkgreen', linewidth=2, marker='o', markersize=3)
-                ax2.axhline(y=invert_elev, color='red', linestyle='--', 
-                           linewidth=2, label=f'Invert Elevation ({invert_elev:.2f})')
-                
+                ax2.plot(
+                    node_data_remapped["timestep"],
+                    node_data_remapped["water_level"],
+                    label="Water Level",
+                    color="darkgreen",
+                    linewidth=2,
+                    marker="o",
+                    markersize=3,
+                )
+                ax2.axhline(
+                    y=invert_elev,
+                    color="red",
+                    linestyle="--",
+                    linewidth=2,
+                    label=f"Invert Elevation ({invert_elev:.2f})",
+                )
+
                 # Add HEC-RAS ground truth line
                 if not node_data_hecras.empty:
-                    ax2.plot(node_data_hecras['timestep'], node_data_hecras['water_level'], 
-                            label='HEC-RAS', color='orange', linewidth=2, linestyle='-.', marker='s', markersize=2, alpha=0.7)
-                
-                ax2.set_xlabel('Timestep', fontsize=12)
-                ax2.set_ylabel('Elevation (m)', fontsize=12)
-                ax2.set_title(f'Remapped - Node {node_idx}', fontsize=14, fontweight='bold')
-                ax2.legend(loc='best', fontsize=10)
+                    ax2.plot(
+                        node_data_hecras["timestep"],
+                        node_data_hecras["water_level"],
+                        label="HEC-RAS",
+                        color="orange",
+                        linewidth=2,
+                        linestyle="-.",
+                        marker="s",
+                        markersize=2,
+                        alpha=0.7,
+                    )
+
+                ax2.set_xlabel("Timestep", fontsize=12)
+                ax2.set_ylabel("Elevation (m)", fontsize=12)
+                ax2.set_title(
+                    f"Remapped - Node {node_idx}", fontsize=14, fontweight="bold"
+                )
+                ax2.legend(loc="best", fontsize=10)
                 ax2.grid(True, alpha=0.3)
                 ax2.set_ylim([y_min_common, y_max_common])
             else:
-                ax2.text(0.5, 0.5, 'No Remapped Data', ha='center', va='center', 
-                        transform=ax2.transAxes, fontsize=14)
-                ax2.set_title(f'Remapped - Node {node_idx}', fontsize=14, fontweight='bold')
+                ax2.text(
+                    0.5,
+                    0.5,
+                    "No Remapped Data",
+                    ha="center",
+                    va="center",
+                    transform=ax2.transAxes,
+                    fontsize=14,
+                )
+                ax2.set_title(
+                    f"Remapped - Node {node_idx}", fontsize=14, fontweight="bold"
+                )
                 ax2.set_ylim([y_min_common, y_max_common])
-            
+
             # Overall title
-            fig.suptitle(f'{event_folder.name} - Node {node_idx}: Original vs Remapped', 
-                        fontsize=16, fontweight='bold', y=1.02)
-            
+            fig.suptitle(
+                f"{event_folder.name} - Node {node_idx}: Original vs Remapped",
+                fontsize=16,
+                fontweight="bold",
+                y=1.02,
+            )
+
             # Save plot
             output_file = output_dir / f"node_{node_idx:03d}_comparison.png"
             plt.tight_layout()
-            plt.savefig(output_file, dpi=150, bbox_inches='tight')
+            plt.savefig(output_file, dpi=150, bbox_inches="tight")
             plt.close()
-            
+
             if node_idx == unique_nodes[0]:  # Print progress for first node only
                 print(f"  ✓ Created comparison plots in {output_dir}/")
-        
+
         print(f"  ✓ Completed {num_nodes} comparison plots for {event_folder.name}")
-    
+
     print("\nPlotting complete!")
+
 
 def plot_water_levels_all(train_dir, static_csv_path, event_names=None):
     """
     Plot water level across timesteps for each node, comparing with invert elevation.
-    
+
     Parameters:
     -----------
     train_dir : str or Path
@@ -584,19 +1043,21 @@ def plot_water_levels_all(train_dir, static_csv_path, event_names=None):
     static_csv_path : str or Path
         Path to the static CSV file with node information (invert_elevation, etc.)
     event_names : list of str, optional
-        List of event folder names to plot (e.g., ['event_1', 'event_5']). 
+        List of event folder names to plot (e.g., ['event_1', 'event_5']).
         If None, plots all events.
     """
     train_path = Path(train_dir)
     static_path = Path(static_csv_path)
-    
+
     # Read static node data
     print(f"Reading static node data from {static_path}...")
     static_df = pd.read_csv(static_path)
-    
+
     # Create a dictionary mapping node_idx to invert_elevation
-    node_invert_elevation = dict(zip(static_df['node_idx'], static_df['invert_elevation']))
-    
+    node_invert_elevation = dict(
+        zip(static_df["node_idx"], static_df["invert_elevation"])
+    )
+
     # Find event folders
     if event_names is not None:
         # Use specified event names
@@ -609,167 +1070,228 @@ def plot_water_levels_all(train_dir, static_csv_path, event_names=None):
                 print(f"Warning: Event folder '{event_name}' not found, skipping...")
     else:
         # Plot all events
-        event_folders = sorted([f for f in train_path.iterdir() 
-                               if f.is_dir() and f.name.startswith('event_')])
-    
+        event_folders = sorted(
+            [
+                f
+                for f in train_path.iterdir()
+                if f.is_dir() and f.name.startswith("event_")
+            ]
+        )
+
     if not event_folders:
         print(f"No event folders found in {train_path}")
         return
-    
+
     print(f"Found {len(event_folders)} event folders to plot")
-    
+
     # Get unique nodes from static data
-    unique_nodes = sorted(static_df['node_idx'].unique())
+    unique_nodes = sorted(static_df["node_idx"].unique())
     num_nodes = len(unique_nodes)
-    
+
     print(f"Number of nodes to plot: {num_nodes}")
-    
+
     # Process each event
     for event_idx, event_folder in enumerate(event_folders):
         csv_file_original = event_folder / "1d_nodes_dynamic_all.csv"
         csv_file_remapped = event_folder / "1d_nodes_dynamic_all.csv"
-        
+
         if not csv_file_original.exists():
             print(f"Warning: {csv_file_original} not found, skipping...")
             continue
-        
+
         if not csv_file_remapped.exists():
             print(f"Warning: {csv_file_remapped} not found, skipping...")
             continue
-        
-        print(f"\nProcessing {event_folder.name} ({event_idx + 1}/{len(event_folders)})...")
-        
+
+        print(
+            f"\nProcessing {event_folder.name} ({event_idx + 1}/{len(event_folders)})..."
+        )
+
         # Read both CSVs
         df_original = pd.read_csv(csv_file_original)
         df_remapped = pd.read_csv(csv_file_remapped)
-        
+
         # Create output directory for plots
         output_dir = event_folder / "plots"
         output_dir.mkdir(exist_ok=True)
-        
+
         # Plot for each node
         for node_idx in unique_nodes:
             # Filter data for this node from both datasets
-            node_data_original = df_original[df_original['node_idx'] == node_idx].copy()
-            node_data_remapped = df_remapped[df_remapped['node_idx'] == node_idx].copy()
-            
+            node_data_original = df_original[df_original["node_idx"] == node_idx].copy()
+            node_data_remapped = df_remapped[df_remapped["node_idx"] == node_idx].copy()
+
             if node_data_original.empty and node_data_remapped.empty:
                 print(f"  Warning: No data for node {node_idx}, skipping...")
                 continue
-            
+
             # Sort by timestep
-            node_data_original = node_data_original.sort_values('timestep')
-            node_data_remapped = node_data_remapped.sort_values('timestep')
-            
+            node_data_original = node_data_original.sort_values("timestep")
+            node_data_remapped = node_data_remapped.sort_values("timestep")
+
             # Get invert elevation for this node
             invert_elev = node_invert_elevation.get(node_idx, None)
-            
+
             if invert_elev is None:
-                print(f"  Warning: No invert elevation for node {node_idx}, skipping...")
+                print(
+                    f"  Warning: No invert elevation for node {node_idx}, skipping..."
+                )
                 continue
-            
+
             # Create side-by-side plot
             fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 6))
-            
+
             # Calculate common y-axis limits
             y_min_list = [invert_elev]
             y_max_list = [invert_elev]
-            
+
             if not node_data_original.empty:
-                y_min_list.append(node_data_original['water_level'].min())
-                y_max_list.append(node_data_original['water_level'].max())
-            
+                y_min_list.append(node_data_original["water_level"].min())
+                y_max_list.append(node_data_original["water_level"].max())
+
             if not node_data_remapped.empty:
-                y_min_list.append(node_data_remapped['water_level'].min())
-                y_max_list.append(node_data_remapped['water_level'].max())
-            
+                y_min_list.append(node_data_remapped["water_level"].min())
+                y_max_list.append(node_data_remapped["water_level"].max())
+
             y_min_common = min(y_min_list) - 1
             y_max_common = max(y_max_list) + 1
-            
+
             # LEFT PLOT: Original data
             if not node_data_original.empty:
-                ax1.plot(node_data_original['timestep'], node_data_original['water_level'], 
-                        label='Water Level', color='steelblue', linewidth=2, marker='o', markersize=3)
-                ax1.axhline(y=invert_elev, color='red', linestyle='--', 
-                           linewidth=2, label=f'Invert Elevation ({invert_elev:.2f})')
-                
-                ax1.set_xlabel('Timestep', fontsize=12)
-                ax1.set_ylabel('Elevation (m)', fontsize=12)
-                ax1.set_title(f'Original - Node {node_idx}', fontsize=14, fontweight='bold')
-                ax1.legend(loc='best', fontsize=10)
+                ax1.plot(
+                    node_data_original["timestep"],
+                    node_data_original["water_level"],
+                    label="Water Level",
+                    color="steelblue",
+                    linewidth=2,
+                    marker="o",
+                    markersize=3,
+                )
+                ax1.axhline(
+                    y=invert_elev,
+                    color="red",
+                    linestyle="--",
+                    linewidth=2,
+                    label=f"Invert Elevation ({invert_elev:.2f})",
+                )
+
+                ax1.set_xlabel("Timestep", fontsize=12)
+                ax1.set_ylabel("Elevation (m)", fontsize=12)
+                ax1.set_title(
+                    f"Original - Node {node_idx}", fontsize=14, fontweight="bold"
+                )
+                ax1.legend(loc="best", fontsize=10)
                 ax1.grid(True, alpha=0.3)
                 ax1.set_ylim([y_min_common, y_max_common])
             else:
-                ax1.text(0.5, 0.5, 'No Original Data', ha='center', va='center', 
-                        transform=ax1.transAxes, fontsize=14)
-                ax1.set_title(f'Original - Node {node_idx}', fontsize=14, fontweight='bold')
+                ax1.text(
+                    0.5,
+                    0.5,
+                    "No Original Data",
+                    ha="center",
+                    va="center",
+                    transform=ax1.transAxes,
+                    fontsize=14,
+                )
+                ax1.set_title(
+                    f"Original - Node {node_idx}", fontsize=14, fontweight="bold"
+                )
                 ax1.set_ylim([y_min_common, y_max_common])
-            
+
             # RIGHT PLOT: Remapped data
             if not node_data_remapped.empty:
-                ax2.plot(node_data_remapped['timestep'], node_data_remapped['water_level'], 
-                        label='Water Level', color='darkgreen', linewidth=2, marker='o', markersize=3)
-                ax2.axhline(y=invert_elev, color='red', linestyle='--', 
-                           linewidth=2, label=f'Invert Elevation ({invert_elev:.2f})')
-                
-                ax2.set_xlabel('Timestep', fontsize=12)
-                ax2.set_ylabel('Elevation (m)', fontsize=12)
-                ax2.set_title(f'Remapped - Node {node_idx}', fontsize=14, fontweight='bold')
-                ax2.legend(loc='best', fontsize=10)
+                ax2.plot(
+                    node_data_remapped["timestep"],
+                    node_data_remapped["water_level"],
+                    label="Water Level",
+                    color="darkgreen",
+                    linewidth=2,
+                    marker="o",
+                    markersize=3,
+                )
+                ax2.axhline(
+                    y=invert_elev,
+                    color="red",
+                    linestyle="--",
+                    linewidth=2,
+                    label=f"Invert Elevation ({invert_elev:.2f})",
+                )
+
+                ax2.set_xlabel("Timestep", fontsize=12)
+                ax2.set_ylabel("Elevation (m)", fontsize=12)
+                ax2.set_title(
+                    f"Remapped - Node {node_idx}", fontsize=14, fontweight="bold"
+                )
+                ax2.legend(loc="best", fontsize=10)
                 ax2.grid(True, alpha=0.3)
                 ax2.set_ylim([y_min_common, y_max_common])
             else:
-                ax2.text(0.5, 0.5, 'No Remapped Data', ha='center', va='center', 
-                        transform=ax2.transAxes, fontsize=14)
-                ax2.set_title(f'Remapped - Node {node_idx}', fontsize=14, fontweight='bold')
+                ax2.text(
+                    0.5,
+                    0.5,
+                    "No Remapped Data",
+                    ha="center",
+                    va="center",
+                    transform=ax2.transAxes,
+                    fontsize=14,
+                )
+                ax2.set_title(
+                    f"Remapped - Node {node_idx}", fontsize=14, fontweight="bold"
+                )
                 ax2.set_ylim([y_min_common, y_max_common])
-            
+
             # Overall title
-            fig.suptitle(f'{event_folder.name} - Node {node_idx}: Original vs Remapped', 
-                        fontsize=16, fontweight='bold', y=1.02)
-            
+            fig.suptitle(
+                f"{event_folder.name} - Node {node_idx}: Original vs Remapped",
+                fontsize=16,
+                fontweight="bold",
+                y=1.02,
+            )
+
             # Save plot
             output_file = output_dir / f"node_{node_idx:03d}_comparison.png"
             plt.tight_layout()
-            plt.savefig(output_file, dpi=150, bbox_inches='tight')
+            plt.savefig(output_file, dpi=150, bbox_inches="tight")
             plt.close()
-            
+
             if node_idx == unique_nodes[0]:  # Print progress for first node only
                 print(f"  ✓ Created comparison plots in {output_dir}/")
-        
+
         print(f"  ✓ Completed {num_nodes} comparison plots for {event_folder.name}")
-    
+
     print("\nPlotting complete!")
+
 
 def remove_original_csv(train_dir):
     """
     Remove all 1d_nodes_dynamic_all.csv files from all event_* folders.
-    
+
     Parameters:
     -----------
     train_dir : str or Path
         Path to the parent 'train' directory containing event_* folders
     """
     train_path = Path(train_dir)
-    
+
     if not train_path.exists():
         print(f"Error: Directory {train_path} does not exist")
         return
-    
+
     # Find all event_* folders
-    event_folders = sorted([f for f in train_path.iterdir() 
-                           if f.is_dir() and f.name.startswith('event_')])
-    
+    event_folders = sorted(
+        [f for f in train_path.iterdir() if f.is_dir() and f.name.startswith("event_")]
+    )
+
     if not event_folders:
         print(f"No event_* folders found in {train_path}")
         return
-    
+
     print(f"Found {len(event_folders)} event folders")
     removed_count = 0
-    
+
     for event_folder in event_folders:
         csv_file = event_folder / "1d_nodes_dynamic_all.csv"
-        
+
         if csv_file.exists():
             try:
                 csv_file.unlink()  # Delete the file
@@ -779,7 +1301,7 @@ def remove_original_csv(train_dir):
                 print(f"  ✗ Error removing {csv_file}: {str(e)}")
         else:
             print(f"  - Not found: {csv_file}")
-    
+
     print(f"\nRemoved {removed_count} files out of {len(event_folders)} folders")
 
 
@@ -787,211 +1309,326 @@ def rename_remapped_to_original(train_dir):
     """
     Rename all 1d_nodes_dynamic_all_remapped.csv files to 1d_nodes_dynamic_all.csv
     in all event_* folders.
-    
+
     Parameters:
     -----------
     train_dir : str or Path
         Path to the parent 'train' directory containing event_* folders
     """
     train_path = Path(train_dir)
-    
+
     if not train_path.exists():
         print(f"Error: Directory {train_path} does not exist")
         return
-    
+
     # Find all event_* folders
-    event_folders = sorted([f for f in train_path.iterdir() 
-                           if f.is_dir() and f.name.startswith('event_')])
-    
+    event_folders = sorted(
+        [f for f in train_path.iterdir() if f.is_dir() and f.name.startswith("event_")]
+    )
+
     if not event_folders:
         print(f"No event_* folders found in {train_path}")
         return
-    
+
     print(f"Found {len(event_folders)} event folders")
     renamed_count = 0
-    
+
     for event_folder in event_folders:
         old_file = event_folder / "1d_nodes_dynamic_all_remapped.csv"
         new_file = event_folder / "1d_nodes_dynamic_all.csv"
-        
+
         if old_file.exists():
             # Check if destination already exists
             if new_file.exists():
-                print(f"  ⚠ Warning: {new_file} already exists, skipping rename for {event_folder.name}")
+                print(
+                    f"  ⚠ Warning: {new_file} already exists, skipping rename for {event_folder.name}"
+                )
                 continue
-            
+
             try:
                 old_file.rename(new_file)  # Rename the file
-                print(f"  ✓ Renamed: {old_file.name} → {new_file.name} in {event_folder.name}")
+                print(
+                    f"  ✓ Renamed: {old_file.name} → {new_file.name} in {event_folder.name}"
+                )
                 renamed_count += 1
             except Exception as e:
                 print(f"  ✗ Error renaming in {event_folder.name}: {str(e)}")
         else:
             print(f"  - Not found: {old_file}")
-    
+
     print(f"\nRenamed {renamed_count} files out of {len(event_folders)} folders")
+
 
 def remap_combined_dataset(csv_path, output_path=None):
     """
     Remap node_id values in a combined dataset CSV based on model_id and node_type.
-    
+
     This function processes rows where node_type == 1 (1D nodes) and remaps the node_id
     according to the appropriate mapping based on model_id:
     - model_id == 1: uses model1_1d_mapping
     - model_id == 2: uses model2_1d_mapping
-    
+
     The mapping interpretation: mapping[FID] = HEC-RAS_column means:
     "output position FID gets data from input position HEC-RAS_column"
-    
+
     Parameters:
     -----------
     csv_path : str or Path
         Path to the input CSV file
     output_path : str or Path, optional
         Path for the output CSV file. If None, appends '_remapped' to the input filename.
-    
+
     Returns:
     --------
     pd.DataFrame : The remapped dataframe
     """
     csv_path = Path(csv_path)
-    
+
     if not csv_path.exists():
         print(f"Error: File {csv_path} does not exist")
         return None
-    
+
     print(f"Reading CSV from {csv_path}...")
     df = pd.read_csv(csv_path)
-    
+
     # Verify required columns exist
-    required_cols = ['row_id', 'model_id', 'event_id', 'node_type', 'node_id', 'water_level', 'Usage']
+    required_cols = [
+        "row_id",
+        "model_id",
+        "event_id",
+        "node_type",
+        "node_id",
+        "water_level",
+        "Usage",
+    ]
     if not all(col in df.columns for col in required_cols):
         print(f"Error: Missing required columns. Expected: {required_cols}")
         print(f"Found: {df.columns.tolist()}")
         return None
-    
+
     print(f"Original data shape: {df.shape}")
     print(f"Unique model_ids: {sorted(df['model_id'].unique())}")
     print(f"Unique node_types: {sorted(df['node_type'].unique())}")
-    
+
     # Create a copy for remapping
     df_remapped = df.copy()
-    
+
     # Process model 1, node_type 1
-    mask_m1 = (df_remapped['model_id'] == 1) & (df_remapped['node_type'] == 1)
+    mask_m1 = (df_remapped["model_id"] == 1) & (df_remapped["node_type"] == 1)
     count_m1 = mask_m1.sum()
     if count_m1 > 0:
         print(f"\nProcessing {count_m1} rows for model_id=1, node_type=1...")
         df_m1 = df_remapped[mask_m1].copy()
-        
+
         # Check which node_ids are present
-        unique_node_ids = sorted(df_m1['node_id'].unique())
+        unique_node_ids = sorted(df_m1["node_id"].unique())
         print(f"  Unique node_ids found: {unique_node_ids}")
         print(f"  Expected node_ids in mapping: {sorted(model1_1d_mapping.values())}")
-        
+
         # Create reverse mapping for direct application
         reverse_mapping = {v: k for k, v in model1_1d_mapping.items()}
-        
+
         # Check for node_ids not in mapping
         unmapped_ids = set(unique_node_ids) - set(reverse_mapping.keys())
         if unmapped_ids:
             print(f"  WARNING: Found node_ids not in mapping: {sorted(unmapped_ids)}")
-            print(f"  These {len(df_m1[df_m1['node_id'].isin(unmapped_ids)])} rows will be dropped!")
-        
+            print(
+                f"  These {len(df_m1[df_m1['node_id'].isin(unmapped_ids)])} rows will be dropped!"
+            )
+
         # Apply the reverse mapping
-        df_m1['node_id'] = df_m1['node_id'].map(reverse_mapping)
-        
+        df_m1["node_id"] = df_m1["node_id"].map(reverse_mapping)
+
         # Check for unmapped values
-        if df_m1['node_id'].isna().any():
-            unmapped_count = df_m1['node_id'].isna().sum()
-            print(f"  Warning: {unmapped_count} rows could not be mapped and will be dropped")
-            df_m1 = df_m1.dropna(subset=['node_id'])
-        
+        if df_m1["node_id"].isna().any():
+            unmapped_count = df_m1["node_id"].isna().sum()
+            print(
+                f"  Warning: {unmapped_count} rows could not be mapped and will be dropped"
+            )
+            df_m1 = df_m1.dropna(subset=["node_id"])
+
         # Convert to integer
-        df_m1['node_id'] = df_m1['node_id'].astype(int)
-        
+        df_m1["node_id"] = df_m1["node_id"].astype(int)
+
         # Replace in main dataframe
         df_remapped = df_remapped[~mask_m1]  # Remove original model 1 rows
         df_remapped = pd.concat([df_remapped, df_m1], ignore_index=True)
         print(f"  ✓ Remapped {len(df_m1)} rows for model 1")
-    
+
     # Process model 2, node_type 1
-    mask_m2 = (df_remapped['model_id'] == 2) & (df_remapped['node_type'] == 1)
+    mask_m2 = (df_remapped["model_id"] == 2) & (df_remapped["node_type"] == 1)
     count_m2 = mask_m2.sum()
     if count_m2 > 0:
         print(f"\nProcessing {count_m2} rows for model_id=2, node_type=1...")
         df_m2 = df_remapped[mask_m2].copy()
-        
+
         # Check which node_ids are present
-        unique_node_ids = sorted(df_m2['node_id'].unique())
+        unique_node_ids = sorted(df_m2["node_id"].unique())
         print(f"  Unique node_ids found: {len(unique_node_ids)} unique values")
-        print(f"  Expected node_ids in mapping: {len(model2_1d_mapping.values())} unique values")
-        
+        print(
+            f"  Expected node_ids in mapping: {len(model2_1d_mapping.values())} unique values"
+        )
+
         # Create reverse mapping for direct application
         reverse_mapping = {v: k for k, v in model2_1d_mapping.items()}
-        
+
         # Check for node_ids not in mapping
         unmapped_ids = set(unique_node_ids) - set(reverse_mapping.keys())
         if unmapped_ids:
             print(f"  WARNING: Found {len(unmapped_ids)} node_ids not in mapping")
             print(f"  Sample unmapped IDs: {sorted(list(unmapped_ids))[:10]}")
-            print(f"  These {len(df_m2[df_m2['node_id'].isin(unmapped_ids)])} rows will be dropped!")
-        
+            print(
+                f"  These {len(df_m2[df_m2['node_id'].isin(unmapped_ids)])} rows will be dropped!"
+            )
+
         # Apply the reverse mapping
-        df_m2['node_id'] = df_m2['node_id'].map(reverse_mapping)
-        
+        df_m2["node_id"] = df_m2["node_id"].map(reverse_mapping)
+
         # Check for unmapped values
-        if df_m2['node_id'].isna().any():
-            unmapped_count = df_m2['node_id'].isna().sum()
-            print(f"  Warning: {unmapped_count} rows could not be mapped and will be dropped")
-            df_m2 = df_m2.dropna(subset=['node_id'])
-        
+        if df_m2["node_id"].isna().any():
+            unmapped_count = df_m2["node_id"].isna().sum()
+            print(
+                f"  Warning: {unmapped_count} rows could not be mapped and will be dropped"
+            )
+            df_m2 = df_m2.dropna(subset=["node_id"])
+
         # Convert to integer
-        df_m2['node_id'] = df_m2['node_id'].astype(int)
-        
+        df_m2["node_id"] = df_m2["node_id"].astype(int)
+
         # Replace in main dataframe
         df_remapped = df_remapped[~mask_m2]  # Remove original model 2 rows
         df_remapped = pd.concat([df_remapped, df_m2], ignore_index=True)
         print(f"  ✓ Remapped {len(df_m2)} rows for model 2")
-    
+
+    # Process model 3, node_type 1
+    mask_m2 = (df_remapped["model_id"] == 3) & (df_remapped["node_type"] == 1)
+    count_m2 = mask_m2.sum()
+    if count_m2 > 0:
+        print(f"\nProcessing {count_m2} rows for model_id=3, node_type=1...")
+        df_m2 = df_remapped[mask_m2].copy()
+
+        # Check which node_ids are present
+        unique_node_ids = sorted(df_m2["node_id"].unique())
+        print(f"  Unique node_ids found: {len(unique_node_ids)} unique values")
+        print(
+            f"  Expected node_ids in mapping: {len(model4_1d_mapping.values())} unique values"
+        )
+
+        # Create reverse mapping for direct application
+        reverse_mapping = {v: k for k, v in model4_1d_mapping.items()}
+
+        # Check for node_ids not in mapping
+        unmapped_ids = set(unique_node_ids) - set(reverse_mapping.keys())
+        if unmapped_ids:
+            print(f"  WARNING: Found {len(unmapped_ids)} node_ids not in mapping")
+            print(f"  Sample unmapped IDs: {sorted(list(unmapped_ids))[:10]}")
+            print(
+                f"  These {len(df_m2[df_m2['node_id'].isin(unmapped_ids)])} rows will be dropped!"
+            )
+
+        # Apply the reverse mapping
+        df_m2["node_id"] = df_m2["node_id"].map(reverse_mapping)
+
+        # Check for unmapped values
+        if df_m2["node_id"].isna().any():
+            unmapped_count = df_m2["node_id"].isna().sum()
+            print(
+                f"  Warning: {unmapped_count} rows could not be mapped and will be dropped"
+            )
+            df_m2 = df_m2.dropna(subset=["node_id"])
+
+        # Convert to integer
+        df_m2["node_id"] = df_m2["node_id"].astype(int)
+
+        # Replace in main dataframe
+        df_remapped = df_remapped[~mask_m2]  # Remove original model 3 rows
+        df_remapped = pd.concat([df_remapped, df_m2], ignore_index=True)
+        print(f"  ✓ Remapped {len(df_m2)} rows for model 3")
+
+    # Process model 4, node_type 1
+    mask_m2 = (df_remapped["model_id"] == 4) & (df_remapped["node_type"] == 1)
+    count_m2 = mask_m2.sum()
+    if count_m2 > 0:
+        print(f"\nProcessing {count_m2} rows for model_id=4, node_type=1...")
+        df_m2 = df_remapped[mask_m2].copy()
+
+        # Check which node_ids are present
+        unique_node_ids = sorted(df_m2["node_id"].unique())
+        print(f"  Unique node_ids found: {len(unique_node_ids)} unique values")
+        print(
+            f"  Expected node_ids in mapping: {len(model4_1d_mapping.values())} unique values"
+        )
+
+        # Create reverse mapping for direct application
+        reverse_mapping = {v: k for k, v in model4_1d_mapping.items()}
+
+        # Check for node_ids not in mapping
+        unmapped_ids = set(unique_node_ids) - set(reverse_mapping.keys())
+        if unmapped_ids:
+            print(f"  WARNING: Found {len(unmapped_ids)} node_ids not in mapping")
+            print(f"  Sample unmapped IDs: {sorted(list(unmapped_ids))[:10]}")
+            print(
+                f"  These {len(df_m2[df_m2['node_id'].isin(unmapped_ids)])} rows will be dropped!"
+            )
+
+        # Apply the reverse mapping
+        df_m2["node_id"] = df_m2["node_id"].map(reverse_mapping)
+
+        # Check for unmapped values
+        if df_m2["node_id"].isna().any():
+            unmapped_count = df_m2["node_id"].isna().sum()
+            print(
+                f"  Warning: {unmapped_count} rows could not be mapped and will be dropped"
+            )
+            df_m2 = df_m2.dropna(subset=["node_id"])
+
+        # Convert to integer
+        df_m2["node_id"] = df_m2["node_id"].astype(int)
+
+        # Replace in main dataframe
+        df_remapped = df_remapped[~mask_m2]  # Remove original model 4 rows
+        df_remapped = pd.concat([df_remapped, df_m2], ignore_index=True)
+        print(f"  ✓ Remapped {len(df_m2)} rows for model 4")
+
     # Sort by original column order and row_id
-    df_remapped = df_remapped.sort_values('row_id').reset_index(drop=True)
-    
+    df_remapped = df_remapped.sort_values("row_id").reset_index(drop=True)
+
     # Determine output path
     if output_path is None:
         output_path = csv_path.parent / f"{csv_path.stem}_remapped{csv_path.suffix}"
     else:
         output_path = Path(output_path)
-    
+
     # Save the remapped CSV
     df_remapped.to_csv(output_path, index=False)
     print(f"\n✓ Saved remapped file to {output_path}")
     print(f"Output data shape: {df_remapped.shape}")
-    
+
     return df_remapped
 
+
 if __name__ == "__main__":
-    # train_directory = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model1/processed/features_csv/test"
+    # train_directory = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model1/processed/features_csv"
     # remap_node_indices(train_directory, mapping=model1_1d_mapping)
-    # train_directory = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model1/processed/features_csv/test"
-    # static_csv = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model1/processed/features_csv/test/1d_nodes_static.csv"
-    # hecras_csv = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model1/model1_event1_1D.csv"
+    train_directory = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model3/processed/features_csv"
+    static_csv = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model3/processed/static/1d_nodes_static.csv"
+    hecras_csv = (
+        "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model3/model3_event1.csv"
+    )
+    plot_water_levels(train_directory, static_csv, hecras_csv, event_names=["event_1"])
+    # remove_original_csv(train_directory)
+    # rename_remapped_to_original(train_directory)
+
+    # train_directory = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model3/processed/features_csv"
+    # remap_node_indices(train_directory, mapping=model3_1d_mapping)
+    # train_directory = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model3/processed/features_csv"
+    # static_csv = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model3/processed/static/1d_nodes_static.csv"
+    # hecras_csv = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model3/model3_event1_1D.csv"
     # remove_original_csv(train_directory)
     # rename_remapped_to_original(train_directory)
     # plot_water_levels(train_directory, static_csv, hecras_csv, event_names=["event_1"])
-    # plot_water_levels_all(train_directory, static_csv, event_names=None)  # Plot all events together
-
-    train_directory_2 = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model2/processed/features_csv/train"
-    remap_node_indices(train_directory_2, mapping=model2_1d_mapping)
-    train_directory_2 = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model2/processed/features_csv/train"
-    static_csv_2 = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model2/processed/features_csv/train/1d_nodes_static.csv"
-    hecras_csv_2 = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/data/model2/model2_event43_1D.csv"
-    remove_original_csv(train_directory_2)
-    rename_remapped_to_original(train_directory_2)
-    plot_water_levels(train_directory_2, static_csv_2, hecras_csv_2, event_names=["event_43"])
-    
 
     # # Remap solutions.csv
-    # solutions_csv = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/solutions.csv"
+    # solutions_csv = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/solutions.csv
     # updated_solutions_csv = "/Users/jiayulim/Documents/GitHub/flood_pi_gnn/solutions_remapped.csv"
     # remap_combined_dataset(solutions_csv, output_path=updated_solutions_csv)
